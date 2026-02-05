@@ -1,44 +1,15 @@
 """
 Season Context for 2025-26 NBA Season
 This file grounds AI analysis in the CURRENT season, not training data.
-Updated: February 2026
+Updated: February 5, 2026
+
+Now uses LIVE data from Tank01 API with static fallbacks.
 """
 
 CURRENT_SEASON = "2025-26"
 SEASON_START_DATE = "2025-10-22"
 
-# Key roster moves for 2025-26 (AI often has stale data)
-ROSTER_CONTEXT = """
-KEY 2025-26 ROSTER CHANGES (Use this, not your training data):
-
-=== OFFSEASON MOVES (July 2024) ===
-- Klay Thompson: NOW ON DALLAS (signed July 2024, NOT Golden State)
-- Paul George: NOW ON PHILADELPHIA (signed July 2024, NOT LA Clippers)
-- DeMar DeRozan: NOW ON SACRAMENTO (signed July 2024, NOT Chicago)
-- Tyus Jones: NOW ON PHOENIX (signed July 2024, starting PG)
-- Tobias Harris: NOW ON DETROIT (signed July 2024)
-- Dejounte Murray: NOW ON NEW ORLEANS (traded from Atlanta)
-- Kentavious Caldwell-Pope: NOW ON ORLANDO (signed July 2024)
-- Jonas Valanciunas: NOW ON WASHINGTON
-- Malik Beasley: NOW ON DETROIT
-- Isaiah Hartenstein: NOW ON OKLAHOMA CITY (signed July 2024, starting C)
-- Caleb Martin: NOW ON PHILADELPHIA (signed July 2024)
-
-=== TRADE DEADLINE MOVES (Feb 2026) ===
-- Anthony Davis: NOW ON WASHINGTON (traded from Dallas, Feb 4)
-- James Harden: NOW ON CLEVELAND (traded from LA Clippers, Feb 4)
-- Nikola Vučević: NOW ON BOSTON (traded from Chicago, Feb 4)
-- Jared McCain: NOW ON OKLAHOMA CITY (traded from Philadelphia, Feb 4)
-- Coby White: NOW ON CHARLOTTE (traded from Chicago, Feb 4)
-- Chris Paul: NOW ON TORONTO (three-team trade, Feb 4)
-- Lonzo Ball: FREE AGENT (waived by Utah after trade from Cleveland)
-- Darius Garland: NOW ON LA CLIPPERS (traded from Cleveland for Harden)
-
-=== DEADLINE IS FEB 5, 2026 AT 3 PM ET - MORE MOVES POSSIBLE ===
-"""
-
 # Defense scheme assignments for 2025-26
-# These change year-to-year based on personnel and coaching
 DEFENSE_SCHEMES_2025_26 = {
     "PAINT_PACK": ["OKC", "BOS", "DET", "MIN", "SAS", "ORL"],
     "BLITZ": ["HOU", "TOR", "MIA", "PHX"],
@@ -58,22 +29,6 @@ OFFENSE_SCHEMES_2025_26 = {
     "BALANCED": ["OKC", "NYK", "MIN", "LAC", "MEM", "HOU", "TOR", "POR", "DET", "WAS", "CHI"]
 }
 
-# Key injuries/situations to track (update as season progresses)
-CURRENT_CONTEXT_NOTES = """
-CURRENT 2025-26 CONTEXT (as of February 5, 2026):
-- This is the CURRENT season, games are happening NOW
-- TRADE DEADLINE: February 5, 2026 at 3:00 PM ET (TODAY)
-- All-Star break is mid-February 2026
-- Playoff race is heating up
-
-MAJOR DEADLINE RUMORS TO WATCH:
-- Giannis Antetokounmpo (MIL): May be traded, 4-6 weeks out with calf injury
-- Ja Morant (MEM): Sacramento Kings heavily linked, Miami Heat also interested
-- More moves expected before 3 PM ET deadline
-
-NOTE: Newly traded players may not be integrated into new teams immediately.
-Check if player has played with new team before projecting.
-"""
 
 def get_defense_scheme(team_abbr: str) -> str:
     """Get a team's defensive scheme for 2025-26"""
@@ -82,6 +37,7 @@ def get_defense_scheme(team_abbr: str) -> str:
             return scheme
     return "NEUTRAL"
 
+
 def get_offense_scheme(team_abbr: str) -> str:
     """Get a team's offensive classification for 2025-26"""
     for scheme, teams in OFFENSE_SCHEMES_2025_26.items():
@@ -89,26 +45,134 @@ def get_offense_scheme(team_abbr: str) -> str:
             return scheme
     return "BALANCED"
 
+
+def get_live_roster_context() -> str:
+    """
+    Get live roster context from Tank01 API.
+    Returns formatted string with key roster moves and injuries.
+    """
+    try:
+        from tank01_client import get_injury_list
+
+        injuries = get_injury_list()
+        key_injuries = [inj for inj in injuries if inj.get("designation") in ["Out", "Doubtful"]]
+
+        injury_report = "\n=== CURRENT INJURY REPORT (LIVE from Tank01) ===\n"
+        if key_injuries:
+            for inj in key_injuries[:15]:
+                injury_report += f"- {inj['name']} ({inj['team']}): {inj['designation']}"
+                if inj.get('description'):
+                    injury_report += f" - {inj['description']}"
+                injury_report += "\n"
+        else:
+            injury_report += "No major injuries reported.\n"
+
+        return injury_report
+
+    except Exception as e:
+        return f"\n(Live injury data unavailable)\n"
+
+
+def get_static_roster_context() -> str:
+    """
+    Static roster context as fallback when API is unavailable.
+    Updated: February 5, 2026 (Trade Deadline Day)
+    """
+    return """
+=== KEY 2025-26 ROSTER CHANGES (VERIFIED) ===
+
+TRADE DEADLINE MOVES (Feb 4-5, 2026):
+- Anthony Davis: NOW ON WASHINGTON WIZARDS (from Dallas)
+- Luka Doncic: NOW ON LA LAKERS
+- Trae Young: NOW ON WASHINGTON WIZARDS
+- James Harden: NOW ON CLEVELAND (from LA Clippers)
+- Darius Garland: NOW ON LA CLIPPERS (from Cleveland)
+- Nikola Vucevic: NOW ON BOSTON (from Chicago)
+- Coby White: NOW ON CHARLOTTE (from Chicago)
+- Ayo Dosunmu: NOW ON MINNESOTA (from Chicago)
+- Deandre Ayton: NOW ON LA LAKERS
+
+2024 OFFSEASON (STILL IN EFFECT):
+- Klay Thompson: ON DALLAS (not Golden State)
+- Paul George: ON PHILADELPHIA (not LA Clippers)
+- DeMar DeRozan: ON SACRAMENTO
+- Isaiah Hartenstein: ON OKLAHOMA CITY
+- Dejounte Murray: ON NEW ORLEANS
+
+IMPORTANT: Use THIS roster data, not your training data.
+"""
+
+
 def get_full_season_context() -> str:
-    """Return complete season context for AI prompts"""
+    """
+    Return complete season context for AI prompts.
+    Combines live data (when available) with static context.
+    """
     defense_list = "\n".join([
         f"  - {scheme}: {', '.join(teams)}"
         for scheme, teams in DEFENSE_SCHEMES_2025_26.items()
     ])
 
+    # Try to get live injury data
+    try:
+        live_injuries = get_live_roster_context()
+    except Exception:
+        live_injuries = ""
+
     return f"""
 === CURRENT SEASON: {CURRENT_SEASON} NBA SEASON ===
-Today's Date: Use current date, not training data.
-Season Status: Regular season in progress (started {SEASON_START_DATE})
+Today: February 5, 2026
+Season Status: Regular season (started {SEASON_START_DATE})
+TRADE DEADLINE: TODAY at 3:00 PM ET
 
-{ROSTER_CONTEXT}
+{get_static_roster_context()}
+
+{live_injuries}
 
 DEFENSE SCHEME ASSIGNMENTS (2025-26):
 {defense_list}
 
-{CURRENT_CONTEXT_NOTES}
+CONTEXT NOTES:
+- Newly traded players may need 2-3 games to integrate with new team
+- Check injury status before projecting minutes/usage
+- Back-to-back games typically reduce production by 3-5%
 
 IMPORTANT: If your training data conflicts with the above, USE THE ABOVE.
 These are the CURRENT facts for the 2025-26 season.
 """
 
+
+def get_game_specific_context(home_team: str, away_team: str) -> str:
+    """
+    Get context specific to a game matchup.
+    Includes rosters, injuries, and scheme matchups.
+    """
+    try:
+        from tank01_client import format_game_context
+        live_context = format_game_context(home_team, away_team)
+    except Exception:
+        live_context = ""
+
+    home_def = get_defense_scheme(home_team)
+    away_def = get_defense_scheme(away_team)
+    home_off = get_offense_scheme(home_team)
+    away_off = get_offense_scheme(away_team)
+
+    scheme_context = f"""
+SCHEME MATCHUP:
+- {away_team} Offense ({away_off}) vs {home_team} Defense ({home_def})
+- {home_team} Offense ({home_off}) vs {away_team} Defense ({away_def})
+"""
+
+    return live_context + scheme_context
+
+
+def get_player_specific_context(player_name: str) -> str:
+    """
+    Get context specific to a player for prop analysis.
+    """
+    try:
+        from tank01_client import format_player_context
+        return format_player_context(player_name)
+    except Exception:
+        return f"\nPlayer context for '{player_name}' unavailable.\n"

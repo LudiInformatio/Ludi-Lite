@@ -18,7 +18,14 @@ import requests
 import pytz
 
 from prompts import FREESTYLE_PROMPT, LUDI_METHOD_PROMPT, PLAYER_SPOTLIGHT_PROMPT
-from season_context import get_defense_scheme, get_offense_scheme, CURRENT_SEASON
+from season_context import (
+    get_defense_scheme,
+    get_offense_scheme,
+    get_game_specific_context,
+    get_player_specific_context,
+    get_full_season_context,
+    CURRENT_SEASON
+)
 
 # Timezone for game times (Eastern)
 ET = pytz.timezone('America/New_York')
@@ -200,12 +207,17 @@ def get_time_context() -> dict:
 
 
 def build_time_aware_prompt(base_prompt: str, time_context: dict, late_news: str = "") -> str:
-    """Inject time context into prompt"""
+    """Inject time context and season data into prompt"""
+    # Get current season context (rosters, injuries, etc.)
+    season_context = get_full_season_context()
+
     time_header = f"""
 === ANALYSIS TIMESTAMP ===
 Current Time: {time_context['timestamp']} on {time_context['date']}
 Analysis Mode: {time_context['mode']}
 Confidence: {time_context['confidence']}
+
+{season_context}
 """
     if late_news.strip():
         time_header += f"""
@@ -732,6 +744,9 @@ def main():
         else:
             spread_str = 'PK'
 
+        # Get live roster/injury context for BOTH analysis modes
+        live_context = get_game_specific_context(selected_game['home'], selected_game['away'])
+
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
 SPREAD: {selected_game['home']} {spread_str}
@@ -742,30 +757,38 @@ TIME: {selected_game.get('time') or 'TBD'}
 {selected_game['home']} Defense: {get_defense_scheme(selected_game['home'])}
 {selected_game['away']} Offense: {get_offense_scheme(selected_game['away'])}
 {selected_game['home']} Offense: {get_offense_scheme(selected_game['home'])}
+
+{live_context}
 """
 
     elif query and (analyze_both or analyze_ludi):
         query_type, params = parse_chat_query(query)
 
         if query_type == "game":
+            live_context = get_game_specific_context(params['home'], params['away'])
             analysis_input = f"""
 GAME: {params['away']} @ {params['home']}
 {params['away']} Defense: {get_defense_scheme(params['away'])}
 {params['home']} Defense: {get_defense_scheme(params['home'])}
 {params['away']} Offense: {get_offense_scheme(params['away'])}
 {params['home']} Offense: {get_offense_scheme(params['home'])}
+
+{live_context}
 """
 
         elif query_type in ["player", "player_prop"]:
             stat_focus = params.get('stat', 'All Stats')
             line_info = f"LINE: {params.get('line', 'N/A')}" if params.get('line') else ""
             opponent = params.get('opponent', 'Unknown')
+            player_context = get_player_specific_context(params['name'])
 
             analysis_input = f"""
 PLAYER: {params['name']}
 STAT FOCUS: {stat_focus}
 {line_info}
 QUERY: {query}
+
+{player_context}
 """
             query_type = "player"
 
