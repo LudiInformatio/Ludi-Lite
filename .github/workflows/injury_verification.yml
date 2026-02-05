@@ -1,0 +1,48 @@
+name: Injury Data Verification
+
+on:
+  schedule:
+    # Run at 11 AM EST (16:00 UTC), 3 PM EST (20:00 UTC), 6 PM EST (23:00 UTC)
+    - cron: '0 16,20,23 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  verify-injuries:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Injury Verification
+        env:
+          TANK01_KEY: ${{ secrets.TANK01_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        run: |
+          python injury_verification.py > injury_report_$(date +%Y%m%d_%H%M).txt 2>&1
+          cat injury_report_*.txt
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: injury-report-${{ github.run_number }}
+          path: injury_report_*.txt
+
+      - name: Send Notification (if configured)
+        if: env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          REPORT=$(cat injury_report_*.txt | head -50)
+          curl -X POST $SLACK_WEBHOOK_URL \
+            -H 'Content-Type: application/json' \
+            -d "{\"text\":\"🏥 Injury Verification Report\n\`\`\`$REPORT\`\`\`\"}"
