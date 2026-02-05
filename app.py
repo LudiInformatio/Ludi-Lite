@@ -789,16 +789,15 @@ def render_chat_interface():
 
     query = st.text_input(
         "Ask about a player, prop, or game...",
-        placeholder="Examples: 'Luka assists tonight', 'DEN vs NYK', 'Trae Young PTS 28.5'",
+        placeholder="Examples: 'Luka assists tonight', 'DEN vs NYK', 'Trae Young PTS 28.5' (Press Enter)",
         key="chat_input",
         label_visibility="collapsed"
     )
 
-    col1, col2, col3 = st.columns([1, 1, 2])
-    with col1:
-        analyze_both = st.button("🔍 Analyze Both", type="primary", disabled=not query)
-    with col2:
-        analyze_method = st.button("🎯 Ludi Only", disabled=not query)
+    # Auto-analyze when query is entered (press Enter)
+    # Query submission automatically shows BOTH analyses
+    analyze_both = bool(query)  # Auto-trigger on query
+    analyze_method = False  # Not used - always show both
 
     return query, analyze_both, analyze_method
 
@@ -933,8 +932,8 @@ def main():
     # Section 2: Chat Interface
     query, analyze_both, analyze_ludi = render_chat_interface()
 
-    # Section 3: Manual Input (collapsed)
-    manual_type, manual_params = render_manual_input()
+    # Section 3: Manual Input (REMOVED - use natural language queries)
+    # manual_type, manual_params = render_manual_input()
 
     st.divider()
 
@@ -1024,33 +1023,8 @@ QUERY: {query}
             analysis_input = f"QUERY: {query}"
             query_type = "player"
 
-    elif manual_type and manual_params:
-        query_type = manual_type
-        late_news = manual_params.get("late_news", "")
-
-        if manual_type == "game":
-            analysis_input = f"""
-GAME: {manual_params['away']} @ {manual_params['home']}
-SPREAD: {manual_params['home']} {manual_params['spread']:+.1f}
-TOTAL: {manual_params['total']}
-
-{manual_params['away']} Defense: {get_defense_scheme(manual_params['away'])}
-{manual_params['home']} Defense: {get_defense_scheme(manual_params['home'])}
-
-CONTEXT: {manual_params.get('context', 'None')}
-"""
-        else:
-            analysis_input = f"""
-PLAYER: {manual_params['name']} ({manual_params.get('team', '')})
-OPPONENT: {manual_params['opponent']}
-STAT FOCUS: {manual_params['stat']}
-OPPONENT DEFENSE: {get_defense_scheme(manual_params['opponent'])}
-
-CONTEXT: {manual_params.get('context', 'None')}
-"""
-
     # Run Analysis
-    if analysis_input and (selected_game or analyze_both or analyze_ludi or manual_params):
+    if analysis_input and (selected_game or analyze_both or analyze_ludi):
         # Get FRESH prompts with current injury data (not stale imports)
         if query_type == "game":
             prompt_freestyle = get_dynamic_prompt("freestyle")
