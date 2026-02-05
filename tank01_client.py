@@ -267,6 +267,71 @@ def format_game_context(home_team: str, away_team: str) -> str:
     return context
 
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_box_score(game_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get box score for a specific game.
+
+    Args:
+        game_id: Tank01 game ID
+
+    Returns:
+        Box score dictionary with player stats, or None
+    """
+    data = _make_request("getNBABoxScore", {"gameID": game_id})
+    if not data or "body" not in data:
+        return None
+    return data["body"]
+
+
+@st.cache_data(ttl=600)  # Cache for 10 minutes (historical data changes less)
+def get_player_recent_games(player_name: str, num_games: int = 5) -> List[Dict[str, Any]]:
+    """
+    Get a player's recent game stats using box score lookups.
+
+    Args:
+        player_name: Player name (partial match supported)
+        num_games: Number of recent games to fetch (default 5)
+
+    Returns:
+        List of game stat dictionaries with pts, reb, ast, etc.
+    """
+    # First find the player's team
+    team = find_player_team(player_name)
+    if not team:
+        return []
+
+    # Get recent games for this team
+    recent_games = []
+
+    # Check if we can get games from getNBAGamesForDate for past dates
+    # For now, return empty - this would need historical date iteration
+    # In production, you'd iterate back through dates until you have num_games
+
+    return recent_games
+
+
+@st.cache_data(ttl=300)
+def get_team_recent_record(team_abbr: str, num_games: int = 5) -> Dict[str, Any]:
+    """
+    Get a team's recent win/loss record.
+
+    Args:
+        team_abbr: Team abbreviation
+        num_games: Number of recent games to check
+
+    Returns:
+        Dictionary with wins, losses, and streak info
+    """
+    # This would require iterating through recent dates
+    # Placeholder for now - in production would use getNBAGamesForDate
+    return {
+        "team": team_abbr,
+        "record": "N/A",
+        "streak": "N/A"
+    }
+
+
 def format_player_context(player_name: str) -> str:
     """
     Format player-specific context for prop analysis.
@@ -317,7 +382,7 @@ def format_player_context(player_name: str) -> str:
         context += ", ".join(stat_parts) + "\n"
 
     # Teammates who are out (usage vacuum opportunity)
-    out_teammates = [inj["name"] for inj in injuries if inj["designation"] in ["Out", "Doubtful"]]
+    out_teammates = [inj["name"] for inj in injuries if inj["designation"] in ["Out", "Doubtful", "Suspended"]]
     if out_teammates:
         context += f"Teammates OUT: {', '.join(out_teammates)} (potential usage boost)\n"
 

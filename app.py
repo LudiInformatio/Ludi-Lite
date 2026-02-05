@@ -17,7 +17,8 @@ from typing import Optional, Tuple
 import requests
 import pytz
 
-from prompts import FREESTYLE_PROMPT, LUDI_METHOD_PROMPT, PLAYER_SPOTLIGHT_PROMPT
+# Use dynamic prompts for fresh injury data on each request
+from prompts import get_dynamic_prompt
 from season_context import (
     get_defense_scheme,
     get_offense_scheme,
@@ -28,12 +29,13 @@ from season_context import (
 )
 # Optional Perplexity integration for Freestyle
 try:
-    from perplexity_client import search_game_context, search_player_context, is_perplexity_available
+    from perplexity_client import search_game_context, search_player_context, search_late_news, is_perplexity_available
     PERPLEXITY_ENABLED = is_perplexity_available()
 except ImportError:
     PERPLEXITY_ENABLED = False
-    def search_game_context(*args): return ""
-    def search_player_context(*args): return ""
+    def search_game_context(*args, **kwargs): return ""
+    def search_player_context(*args, **kwargs): return ""
+    def search_late_news(*args): return ""
 
 # Team name normalization (handles Odds-API vs Tank01 naming differences)
 from team_mapping import normalize_team, get_full_name
@@ -291,6 +293,187 @@ def get_api_key(key_name: str) -> Optional[str]:
     return None
 
 
+def fetch_player_props(game_id: str) -> dict:
+    """
+    Fetch player props for a specific game from The-Odds-API.
+    Includes main lines, combo props (PRA, PA, PR, AR), and double/triple-double.
+
+    Args:
+        game_id: The-Odds-API game ID
+
+    Returns:
+        Dictionary with player props by market type
+    """
+    api_key = get_api_key("ODDS_API_KEY")
+    if not api_key or not game_id:
+        return {}
+
+    try:
+        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{game_id}/odds"
+        # Include all main prop markets + combos + specials
+        # Ludi-Bot uses: player_points, player_rebounds, player_assists, player_threes,
+        # player_steals, player_blocks, player_turnovers, player_double_double, player_triple_double
+        # Plus combo markets: player_points_rebounds_assists (PRA), player_points_assists (PA),
+        # player_points_rebounds (PR), player_assists_rebounds (AR)
+        markets = ",".join([
+            "player_points",
+            "player_rebounds",
+            "player_assists",
+            "player_threes",
+            "player_steals",
+            "player_blocks",
+            "player_points_rebounds_assists",  # PRA combo
+            "player_points_assists",           # PA combo
+            "player_points_rebounds",          # PR combo
+            "player_assists_rebounds",         # AR combo
+            "player_double_double",            # DD
+            "player_triple_double"             # TD
+        ])
+        params = {
+            "apiKey": api_key,
+            "regions": "us",
+            "markets": markets,
+            "oddsFormat": "american",
+            "bookmakers": "fanduel,draftkings"
+        }
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            props = {
+                "points": [], "rebounds": [], "assists": [], "threes": [],
+                "steals": [], "blocks": [],
+                "pra": [], "pa": [], "pr": [], "ar": [],  # Combos
+                "double_double": [], "triple_double": []  # Specials
+            }
+
+            # Market key to props dict key mapping
+            market_map = {
+                "player_points": "points",
+                "player_rebounds": "rebounds",
+                "player_assists": "assists",
+                "player_threes": "threes",
+                "player_steals": "steals",
+                "player_blocks": "blocks",
+                "player_points_rebounds_assists": "pra",
+                "player_points_assists": "pa",
+                "player_points_rebounds": "pr",
+                "player_assists_rebounds": "ar",
+                "player_double_double": "double_double",
+                "player_triple_double": "triple_double"
+            }
+
+            for book in data.get("bookmakers", []):
+                book_name = book.get("key", "")
+                for market in book.get("markets", []):
+                    market_key = market.get("key", "")
+                    prop_key = market_map.get(market_key)
+                    if not prop_key:
+                        continue
+
+                    for outcome in market.get("outcomes", []):
+                        prop = {
+                            "player": outcome.get("description", ""),
+                            "line": outcome.get("point"),
+                            "odds": outcome.get("price"),
+                            "type": outcome.get("name"),  # Over/Under or Yes/No for DD/TD
+                            "book": book_name
+                        }
+                        # Skip alt lines - main lines typically don't have alternates in standard markets
+                        # The-Odds-API separates alt lines into different market keys
+                        if prop not in props[prop_key]:
+                            props[prop_key].append(prop)
+
+            return props
+    except Exception as e:
+        st.warning(f"Player props fetch error: {e}")
+    return {}
+
+
+def format_props_context(props: dict, max_players: int = 5) -> str:
+    """
+    Format player props into context string for AI analysis.
+    Includes main lines, combos (PRA, PA, etc.), and DD/TD.
+
+    Args:
+        props: Dictionary from fetch_player_props()
+        max_players: Maximum players to include per category
+
+    Returns:
+        Formatted string with prop lines
+    """
+    if not props:
+        return ""
+
+    context = "\n=== PLAYER PROP LINES (The-Odds-API) ===\n"
+
+    # Main stat categories
+    main_categories = [
+        ("points", "PTS"),
+        ("rebounds", "REB"),
+        ("assists", "AST"),
+        ("threes", "3PM"),
+        ("steals", "STL"),
+        ("blocks", "BLK")
+    ]
+
+    # Combo categories
+    combo_categories = [
+        ("pra", "PTS+REB+AST"),
+        ("pa", "PTS+AST"),
+        ("pr", "PTS+REB"),
+        ("ar", "AST+REB")
+    ]
+
+    # Special categories (Yes/No instead of Over/Under)
+    special_categories = [
+        ("double_double", "Double-Double"),
+        ("triple_double", "Triple-Double")
+    ]
+
+    # Process main stats
+    context += "\n**Main Lines:**\n"
+    for category, label in main_categories:
+        players_seen = set()
+        lines = []
+        for prop in props.get(category, []):
+            player = prop.get("player", "")
+            if player and player not in players_seen and prop.get("type") == "Over":
+                players_seen.add(player)
+                line = prop.get("line", "N/A")
+                odds = prop.get("odds", "N/A")
+                lines.append(f"{player}: {line} ({odds:+d})" if isinstance(odds, int) else f"{player}: {line}")
+
+        if lines:
+            context += f"  {label}: " + " | ".join(lines[:max_players]) + "\n"
+
+    # Process combos (compact format)
+    combo_lines = []
+    for category, label in combo_categories:
+        for prop in props.get(category, []):
+            player = prop.get("player", "")
+            if player and prop.get("type") == "Over":
+                line = prop.get("line", "N/A")
+                combo_lines.append(f"{player} {label}: {line}")
+                break  # Just first player per combo for brevity
+
+    if combo_lines:
+        context += f"\n**Combos:** " + " | ".join(combo_lines[:4]) + "\n"
+
+    # Process DD/TD (compact)
+    special_lines = []
+    for category, label in special_categories:
+        for prop in props.get(category, []):
+            player = prop.get("player", "")
+            if player and prop.get("type") == "Yes":
+                odds = prop.get("odds", "N/A")
+                special_lines.append(f"{player} {label} ({odds:+d})" if isinstance(odds, int) else f"{player} {label}")
+
+    if special_lines:
+        context += f"**Specials:** " + " | ".join(special_lines[:3]) + "\n"
+
+    return context
+
+
 def fetch_todays_games() -> list:
     """Fetch today's NBA games from The-Odds-API"""
     api_key = get_api_key("ODDS_API_KEY")
@@ -302,7 +485,7 @@ def fetch_todays_games() -> list:
         params = {
             "apiKey": api_key,
             "regions": "us",
-            "markets": "spreads,totals",
+            "markets": "spreads,totals,h2h",  # Added h2h (moneyline)
             "oddsFormat": "american",
             "bookmakers": "fanduel,draftkings"
         }
@@ -318,9 +501,11 @@ def fetch_todays_games() -> list:
                 away = normalize_team(away_full)
                 home = normalize_team(home_full)
 
-                # Get spread and total from first bookmaker
+                # Get spread, total, and moneyline from first bookmaker
                 spread = None
                 total = None
+                home_ml = None
+                away_ml = None
                 for book in game.get("bookmakers", []):
                     for market in book.get("markets", []):
                         if market["key"] == "spreads" and not spread:
@@ -331,6 +516,12 @@ def fetch_todays_games() -> list:
                             for outcome in market["outcomes"]:
                                 if outcome["name"] == "Over":
                                     total = outcome["point"]
+                        if market["key"] == "h2h" and not home_ml:
+                            for outcome in market["outcomes"]:
+                                if outcome["name"] == home_full:
+                                    home_ml = outcome["price"]
+                                elif outcome["name"] == away_full:
+                                    away_ml = outcome["price"]
 
                 # Parse time
                 commence = game.get("commence_time", "")
@@ -349,6 +540,8 @@ def fetch_todays_games() -> list:
                     "home_full": home_full or "Home",
                     "spread": spread,
                     "total": total,
+                    "home_ml": home_ml,  # Moneyline
+                    "away_ml": away_ml,  # Moneyline
                     "time": time_str
                 })
             return parsed
@@ -766,10 +959,25 @@ def main():
         # Get live roster/injury context for BOTH analysis modes
         live_context = get_game_specific_context(selected_game['home'], selected_game['away'])
 
+        # Fetch player props for this game (The-Odds-API)
+        props_context = ""
+        game_id = selected_game.get('id')
+        if game_id:
+            props = fetch_player_props(game_id)
+            if props:
+                props_context = format_props_context(props, max_players=8)
+
+        # Format moneyline if available
+        home_ml = selected_game.get('home_ml')
+        away_ml = selected_game.get('away_ml')
+        ml_str = ""
+        if home_ml and away_ml:
+            ml_str = f"\nMONEYLINE: {selected_game['away']} {away_ml:+d} / {selected_game['home']} {home_ml:+d}" if isinstance(home_ml, int) else ""
+
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
 SPREAD: {selected_game['home']} {spread_str}
-TOTAL: {selected_game.get('total') or 'TBD'}
+TOTAL: {selected_game.get('total') or 'TBD'}{ml_str}
 TIME: {selected_game.get('time') or 'TBD'}
 
 {selected_game['away']} Defense: {get_defense_scheme(selected_game['away'])}
@@ -778,6 +986,7 @@ TIME: {selected_game.get('time') or 'TBD'}
 {selected_game['home']} Offense: {get_offense_scheme(selected_game['home'])}
 
 {live_context}
+{props_context}
 """
 
     elif query and (analyze_both or analyze_ludi):
@@ -842,13 +1051,13 @@ CONTEXT: {manual_params.get('context', 'None')}
 
     # Run Analysis
     if analysis_input and (selected_game or analyze_both or analyze_ludi or manual_params):
-        # Select prompts based on query type
+        # Get FRESH prompts with current injury data (not stale imports)
         if query_type == "game":
-            prompt_freestyle = FREESTYLE_PROMPT
-            prompt_method = LUDI_METHOD_PROMPT
+            prompt_freestyle = get_dynamic_prompt("freestyle")
+            prompt_method = get_dynamic_prompt("methodology")
         else:
-            prompt_freestyle = FREESTYLE_PROMPT
-            prompt_method = PLAYER_SPOTLIGHT_PROMPT
+            prompt_freestyle = get_dynamic_prompt("freestyle")
+            prompt_method = get_dynamic_prompt("player")
 
         # Add time context
         prompt_freestyle = build_time_aware_prompt(prompt_freestyle, time_ctx, late_news)
@@ -858,21 +1067,46 @@ CONTEXT: {manual_params.get('context', 'None')}
         model = "claude-sonnet-4-20250514"
 
         # Enhance Freestyle with Perplexity real-time search (if available)
+        # Uses time-based recency filtering per industry best practices
         freestyle_input = analysis_input
         perplexity_used = False
         if PERPLEXITY_ENABLED and (analyze_both or selected_game):
             with st.spinner("🔍 Searching real-time data..."):
+                # Calculate hours to game for dynamic recency filtering
+                hours_to_game = 12  # Default
+                if selected_game and selected_game.get('time'):
+                    try:
+                        game_time_str = selected_game['time']
+                        now = datetime.now(ET)
+                        game_time = datetime.strptime(game_time_str, "%I:%M %p").replace(
+                            year=now.year, month=now.month, day=now.day,
+                            tzinfo=ET
+                        )
+                        hours_to_game = max(0, (game_time - now).total_seconds() / 3600)
+                    except Exception:
+                        hours_to_game = 12
+
                 if query_type == "game" and selected_game:
                     pplx_context = search_game_context(
                         selected_game.get('away_full', selected_game['away']),
-                        selected_game.get('home_full', selected_game['home'])
+                        selected_game.get('home_full', selected_game['home']),
+                        hours_to_game=int(hours_to_game)
                     )
+                    # Add late news if close to tipoff
+                    if hours_to_game <= 2:
+                        late = search_late_news(selected_game['home'])
+                        late += search_late_news(selected_game['away'])
+                        pplx_context = (pplx_context or "") + late
+
                     if pplx_context:
                         freestyle_input = analysis_input + pplx_context
                         perplexity_used = True
                 elif query_type == "player":
                     # Extract player name from analysis_input
-                    pplx_context = search_player_context(query.split()[0] if query else "")
+                    pplx_context = search_player_context(
+                        query.split()[0] if query else "",
+                        hours_to_game=int(hours_to_game)
+                    )
                     if pplx_context:
                         freestyle_input = analysis_input + pplx_context
                         perplexity_used = True
@@ -898,11 +1132,30 @@ CONTEXT: {manual_params.get('context', 'None')}
 
             render_analysis_output("", methodology, show_both=False)
 
-    # Footer
+    # Footer with data sources
     st.markdown("---")
+
+    # Data source badges
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 10px;">
+        <span style="background: #3B82F620; border: 1px solid #3B82F6; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #60A5FA;">Claude AI</span>
+        <span style="background: #10B98120; border: 1px solid #10B981; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #34D399;">Tank01 API</span>
+        <span style="background: #F59E0B20; border: 1px solid #F59E0B; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #FBBF24;">The-Odds-API</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Perplexity badge if enabled
+    if PERPLEXITY_ENABLED:
+        st.markdown("""
+        <div style="text-align: center; margin-bottom: 10px;">
+            <span style="background: #8B5CF620; border: 1px solid #8B5CF6; border-radius: 4px; padding: 2px 8px; font-size: 10px; color: #A78BFA;">+ Perplexity Search</span>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown("""
     <p style="color: #64748B; font-size: 11px; text-align: center;">
-        Ludi Lite | Research Assistant | Not betting advice
+        Ludi Lite | Research Assistant | Not betting advice<br/>
+        <span style="font-size: 9px;">12 prop markets | 6 Tank01 endpoints | Live injuries & rosters</span>
     </p>
     """, unsafe_allow_html=True)
 

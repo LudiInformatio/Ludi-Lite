@@ -58,8 +58,15 @@ streamlit run app.py
    - Click "Secrets"
    - Add your API keys:
      ```toml
+     # Required
      ANTHROPIC_API_KEY = "sk-ant-api03-..."
-     ODDS_API_KEY = "your-key-here"  # Optional
+
+     # Recommended (live data)
+     TANK01_KEY = "your-rapidapi-key"      # Rosters, injuries, depth charts
+     ODDS_API_KEY = "your-odds-api-key"    # Game lines, player props
+
+     # Optional (enhanced Freestyle)
+     PERPLEXITY_API_KEY = "pplx-..."       # Real-time web search
      ```
 
 4. **Done!** Your app will be live at `https://your-app.streamlit.app`
@@ -106,12 +113,48 @@ Analysis confidence varies by time:
 | PRE-GAME | 30min-2hr | High |
 | LOCK TIME | <30 min | Highest |
 
+## Data Sources & APIs
+
+### AI
+- **Claude API (Anthropic)** - claude-sonnet-4 for analysis
+- **Perplexity API** (Optional) - Real-time web search for Freestyle mode
+
+### Tank01 API (RapidAPI)
+| Endpoint | Purpose |
+|----------|---------|
+| `getNBATeamRoster` | Current rosters with stats |
+| `getNBAInjuryList` | Live injury/suspension status |
+| `getNBATeams` | All 30 teams with rosters |
+| `getNBAGamesForDate` | Today's games |
+| `getNBADepthCharts` | Starters vs backups |
+| `getNBABoxScore` | Historical game stats |
+
+### The-Odds-API
+| Market | Type |
+|--------|------|
+| `spreads` | Point spreads |
+| `totals` | Over/under |
+| `h2h` | Moneyline |
+| `player_points` | PTS props |
+| `player_rebounds` | REB props |
+| `player_assists` | AST props |
+| `player_threes` | 3PM props |
+| `player_steals` | STL props |
+| `player_blocks` | BLK props |
+| `player_points_rebounds_assists` | PRA combo |
+| `player_points_assists` | PA combo |
+| `player_points_rebounds` | PR combo |
+| `player_assists_rebounds` | AR combo |
+| `player_double_double` | DD Yes/No |
+| `player_triple_double` | TD Yes/No |
+
 ## Tech Stack
 
 - **Frontend**: Streamlit
-- **AI**: Claude API (Anthropic)
-- **Live Data**: Tank01 API (rosters, injuries, depth charts)
-- **Odds**: The-Odds-API (game lines, props)
+- **AI**: Claude API (Anthropic) + Perplexity (optional)
+- **Live Data**: Tank01 API (rosters, injuries, depth charts, box scores)
+- **Odds**: The-Odds-API (game lines, 12+ player prop markets)
+- **Team Mapping**: Normalized across API naming conventions
 - **Hosting**: Streamlit Cloud
 - **CI/CD**: GitHub Actions with Claude Code
 
@@ -121,8 +164,10 @@ Analysis confidence varies by time:
 ludi-lite/
 ├── app.py              # Main Streamlit application
 ├── prompts.py          # Freestyle + Methodology prompts
-├── season_context.py   # 2025-26 rosters, schemes, trades
-├── tank01_client.py    # Tank01 API client for live NBA data
+├── season_context.py   # 2025-26 rosters, schemes, injuries
+├── tank01_client.py    # Tank01 API client (6 endpoints)
+├── perplexity_client.py # Perplexity real-time search
+├── team_mapping.py     # Cross-API team name normalization
 ├── components.py       # UI card components
 ├── requirements.txt    # Python dependencies
 ├── setup.sh            # Automated setup script

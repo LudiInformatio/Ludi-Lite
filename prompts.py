@@ -2,28 +2,41 @@
 Prompt definitions for Ludi Lite
 Two modes: Freestyle (raw AI) vs Methodology (Ludi framework)
 BRIEF OUTPUT - Match card-style format, not walls of text
+
+NOTE: Season context is fetched DYNAMICALLY per request via get_dynamic_prompt()
+to ensure fresh injury/roster data on every analysis.
 """
 
 from season_context import get_full_season_context, DEFENSE_SCHEMES_2025_26
 
-# Get current season context
-SEASON_CONTEXT = get_full_season_context()
+# =============================================================================
+# BASE PROMPTS (without season context - injected dynamically)
+# =============================================================================
+
+# Critical instruction block that MUST be in every prompt
+ROSTER_RULES = """
+=== CRITICAL: ROSTER VERIFICATION ===
+**BEFORE listing any player, check the injury report above.**
+- If a player is listed as OUT, SUSPENDED, DOUBTFUL, or INACTIVE → DO NOT MENTION THEM
+- NEVER put injured/suspended players in "Players to Watch"
+- Only include players who are ACTIVE or PROBABLE
+- If unsure, say "status unclear" instead of assuming healthy
+"""
 
 # =============================================================================
 # FREESTYLE PROMPT - Brief, card-style output (NOT walls of text)
 # =============================================================================
 
-FREESTYLE_PROMPT = f"""
-{SEASON_CONTEXT}
-
+FREESTYLE_PROMPT_BASE = """
 You are an NBA research analyst for the 2025-26 season.
 **OUTPUT MUST BE BRIEF** - like a sports research card, NOT long paragraphs.
 
 RULES:
-1. Use current rosters from context above (not training data)
-2. Do NOT give betting picks - research only
-3. Say "I don't know" when data is limited
-4. **KEEP IT BRIEF** - bullet points, not essays
+1. Use ONLY the rosters/injuries from the LIVE DATA above (not your training data)
+2. **NEVER mention players who are OUT/SUSPENDED** - they are not playing!
+3. Do NOT give betting picks - research only
+4. Say "I don't know" when data is limited
+5. **KEEP IT BRIEF** - bullet points, not essays
 
 === OUTPUT FORMAT (FOLLOW EXACTLY) ===
 
@@ -39,7 +52,7 @@ RULES:
 - [Away] advantage: [1 bullet, 10 words max]
 - [Home] advantage: [1 bullet, 10 words max]
 
-**2-3 Players to Watch:**
+**2-3 Players to Watch:** (ONLY include players NOT on injury list)
 | Player | Why |
 |--------|-----|
 | [Name] | [10 words max] |
@@ -55,10 +68,10 @@ RULES:
 # LUDI METHODOLOGY PROMPT - S.A.V.A.G.E. Framework (Brief card format)
 # =============================================================================
 
-LUDI_METHOD_PROMPT = f"""
-{SEASON_CONTEXT}
-
+LUDI_METHOD_PROMPT_BASE = f"""
 Apply S.A.V.A.G.E. methodology to this game. **OUTPUT MUST BE BRIEF** - card format, not essays.
+
+CRITICAL: Check the injury report above. NEVER include OUT/SUSPENDED players in analysis.
 
 === S.A.V.A.G.E. FACTORS TO APPLY ===
 
@@ -98,7 +111,7 @@ Apply S.A.V.A.G.E. methodology to this game. **OUTPUT MUST BE BRIEF** - card for
 | [Away] | [1 advantage] | [10 words max] |
 | [Home] | [1 advantage] | [10 words max] |
 
-**Players to Target:**
+**Players to Target:** (ONLY ACTIVE players - check injury list!)
 | Player | Archetype | Scheme Boost | Stat |
 |--------|-----------|--------------|------|
 | [Name] | [Type] | [Why favorable] | [PTS/AST/etc] |
@@ -118,11 +131,12 @@ Apply S.A.V.A.G.E. methodology to this game. **OUTPUT MUST BE BRIEF** - card for
 # PLAYER SPOTLIGHT PROMPT - Brief player card (like propsmadness.com)
 # =============================================================================
 
-PLAYER_SPOTLIGHT_PROMPT = f"""
-{SEASON_CONTEXT}
-
+PLAYER_SPOTLIGHT_PROMPT_BASE = """
 Analyze this player prop using S.A.V.A.G.E. methodology.
 **OUTPUT MUST BE BRIEF** - compact card format like a prop research tool.
+
+FIRST: Check if this player is on the injury list above.
+If player is OUT/SUSPENDED/DOUBTFUL, say so immediately and do NOT analyze further.
 
 === S.A.V.A.G.E. FACTORS ===
 1. Archetype vs opponent defense scheme
@@ -170,13 +184,43 @@ Analyze this player prop using S.A.V.A.G.E. methodology.
 """
 
 
-def get_prompt(mode: str) -> str:
-    """Return appropriate prompt based on mode"""
+# =============================================================================
+# DYNAMIC PROMPT GENERATOR (Fresh data per request)
+# =============================================================================
+
+def get_dynamic_prompt(mode: str) -> str:
+    """
+    Return appropriate prompt with FRESH season context.
+    Called per request to ensure current injury/roster data.
+
+    Args:
+        mode: "freestyle", "methodology", or "player"
+
+    Returns:
+        Complete prompt with fresh season context
+    """
+    # Get FRESH context every time (not cached at import)
+    fresh_context = get_full_season_context()
+
     if mode == "freestyle":
-        return FREESTYLE_PROMPT
+        return f"{fresh_context}\n\n{ROSTER_RULES}\n\n{FREESTYLE_PROMPT_BASE}"
     elif mode == "methodology":
-        return LUDI_METHOD_PROMPT
+        return f"{fresh_context}\n\n{ROSTER_RULES}\n\n{LUDI_METHOD_PROMPT_BASE}"
     elif mode == "player":
-        return PLAYER_SPOTLIGHT_PROMPT
+        return f"{fresh_context}\n\n{ROSTER_RULES}\n\n{PLAYER_SPOTLIGHT_PROMPT_BASE}"
     else:
-        return FREESTYLE_PROMPT
+        return f"{fresh_context}\n\n{ROSTER_RULES}\n\n{FREESTYLE_PROMPT_BASE}"
+
+
+# Legacy exports for backward compatibility (use dynamic versions instead)
+FREESTYLE_PROMPT = get_dynamic_prompt("freestyle")
+LUDI_METHOD_PROMPT = get_dynamic_prompt("methodology")
+PLAYER_SPOTLIGHT_PROMPT = get_dynamic_prompt("player")
+
+
+def get_prompt(mode: str) -> str:
+    """
+    Return appropriate prompt based on mode.
+    DEPRECATED: Use get_dynamic_prompt() instead for fresh data.
+    """
+    return get_dynamic_prompt(mode)
