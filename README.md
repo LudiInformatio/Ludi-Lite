@@ -110,8 +110,10 @@ Analysis confidence varies by time:
 
 - **Frontend**: Streamlit
 - **AI**: Claude API (Anthropic)
-- **Data**: The-Odds-API (optional)
+- **Live Data**: Tank01 API (rosters, injuries, depth charts)
+- **Odds**: The-Odds-API (game lines, props)
 - **Hosting**: Streamlit Cloud
+- **CI/CD**: GitHub Actions with Claude Code
 
 ## Project Structure
 
@@ -120,13 +122,24 @@ ludi-lite/
 ├── app.py              # Main Streamlit application
 ├── prompts.py          # Freestyle + Methodology prompts
 ├── season_context.py   # 2025-26 rosters, schemes, trades
+├── tank01_client.py    # Tank01 API client for live NBA data
 ├── components.py       # UI card components
 ├── requirements.txt    # Python dependencies
+├── setup.sh            # Automated setup script
+├── ludi_lite.db        # SQLite database (local cache)
 ├── README.md           # This file
+├── docs/               # Project documentation
+│   ├── PRD.md          # Product requirements document
+│   └── LUDI_LITE_BUILD_SOP.md  # Build standard operating procedures
 └── .streamlit/
     ├── config.toml     # Theme configuration
     └── secrets.toml    # API keys (not in git)
 ```
+
+## Documentation
+
+- **[Product Requirements (PRD)](docs/PRD.md)** - Full feature specs, user personas, success metrics
+- **[Build SOP](docs/LUDI_LITE_BUILD_SOP.md)** - Multi-agent build protocol for development & maintenance
 
 ## The Experiment
 
