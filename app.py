@@ -8,14 +8,15 @@ Mobile: Access via http://YOUR-IP:8501 on same WiFi
 """
 
 import streamlit as st
-import anthropic
-import sqlite3
-import json
-import os
-from datetime import datetime, date
-from typing import Optional, Tuple
-import requests
-import pytz
+from datetime import datetime
+
+from api_clients import (
+    get_api_key,
+    fetch_todays_games,
+    fetch_player_props,
+    format_props_context,
+    get_claude_analysis,
+)
 
 # Use dynamic prompts for fresh injury data on each request
 from prompts import get_dynamic_prompt
@@ -24,9 +25,8 @@ from season_context import (
     get_offense_scheme,
     get_game_specific_context,
     get_player_specific_context,
-    get_full_season_context,
-    CURRENT_SEASON
 )
+from query_parser import parse_chat_query, match_player_to_game
 # Optional Perplexity integration for Freestyle
 try:
     from perplexity_client import search_game_context, search_player_context, search_late_news, is_perplexity_available
@@ -40,8 +40,10 @@ except ImportError:
 # Team name normalization (handles Odds-API vs Tank01 naming differences)
 from team_mapping import normalize_team, get_full_name
 
-# Timezone for game times (Eastern)
-ET = pytz.timezone('America/New_York')
+# Extracted modules
+from database import init_db, save_analysis
+from time_utils import get_time_context, build_time_aware_prompt, ET
+from ui_components import render_header, render_game_cards, render_chat_interface, render_analysis_output
 
 # =============================================================================
 # Configuration
@@ -138,777 +140,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =============================================================================
-# Database Setup
-# =============================================================================
-
-DB_PATH = "ludi_lite.db"
-
-def init_db():
-    """Initialize SQLite database for tracking"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            game_date TEXT,
-            matchup TEXT,
-            spread REAL,
-            total REAL,
-            freestyle_analysis TEXT,
-            methodology_analysis TEXT,
-            user_notes TEXT,
-            query_type TEXT
-        )
-    """)
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            query TEXT,
-            freestyle_response TEXT,
-            methodology_response TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
+# Initialize database at module level
 init_db()
-
-# =============================================================================
-# Time Context
-# =============================================================================
-
-def get_time_context() -> dict:
-    """Get current time context for analysis"""
-    try:
-        now_et = datetime.now(ET)
-    except Exception:
-        now_et = datetime.now()
-
-    hour = now_et.hour
-
-    if hour < 12:
-        mode = "EARLY_LOOK"
-        confidence = "LOW - Verify closer to game time"
-        color = "#FCD34D"
-    elif hour < 17:
-        mode = "AFTERNOON"
-        confidence = "MEDIUM - Watch for updates"
-        color = "#60A5FA"
-    elif hour < 19:
-        mode = "PRE_GAME"
-        confidence = "HIGH - Most lineups confirmed"
-        color = "#34D399"
-    else:
-        mode = "LOCK_TIME"
-        confidence = "HIGHEST - Games starting"
-        color = "#F87171"
-
-    return {
-        "timestamp": now_et.strftime("%I:%M %p ET"),
-        "date": now_et.strftime("%b %d, %Y"),
-        "mode": mode,
-        "confidence": confidence,
-        "color": color,
-        "hour": hour
-    }
-
-
-def build_time_aware_prompt(base_prompt: str, time_context: dict, late_news: str = "") -> str:
-    """Inject time context and season data into prompt"""
-    # Get current season context (rosters, injuries, etc.)
-    season_context = get_full_season_context()
-
-    time_header = f"""
-=== ANALYSIS TIMESTAMP ===
-Current Time: {time_context['timestamp']} on {time_context['date']}
-Analysis Mode: {time_context['mode']}
-Confidence: {time_context['confidence']}
-
-{season_context}
-"""
-    if late_news.strip():
-        time_header += f"""
-=== LATE NEWS (User Provided - Prioritize This) ===
-{late_news}
-"""
-    return time_header + "\n" + base_prompt
-
-# =============================================================================
-# API Functions
-# =============================================================================
-
-def get_claude_oauth_token() -> Optional[str]:
-    """Get Claude OAuth token from ~/.claude/config.json"""
-    try:
-        config_path = os.path.expanduser("~/.claude/config.json")
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                return config.get('oauthToken')
-    except Exception:
-        pass
-    return None
-
-
-def get_api_key(key_name: str) -> Optional[str]:
-    """
-    Get API key with priority:
-    1. Claude OAuth token (if key is ANTHROPIC_API_KEY)
-    2. Streamlit Cloud secrets (st.secrets)
-    3. Environment variables
-    4. Local Ludi-Bot .env file (development fallback)
-    """
-    # Priority 1: For Anthropic, try OAuth token first
-    if key_name == "ANTHROPIC_API_KEY":
-        oauth_token = get_claude_oauth_token()
-        if oauth_token:
-            return oauth_token
-
-    # Priority 2: Streamlit Cloud secrets
-    try:
-        if hasattr(st, 'secrets') and key_name in st.secrets:
-            return st.secrets[key_name]
-    except Exception:
-        pass
-
-    # Priority 3: Environment variable
-    key = os.getenv(key_name)
-    if key:
-        return key
-
-    # Priority 4: Local .env file (development only)
-    env_path = os.path.expanduser("~/Ludi-Bot/.env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                if line.startswith(f"{key_name}="):
-                    return line.strip().split("=", 1)[1].strip('"\'')
-
-    return None
-
-
-def fetch_player_props(game_id: str) -> dict:
-    """
-    Fetch player props for a specific game from The-Odds-API.
-    Includes main lines, combo props (PRA, PA, PR, AR), and double/triple-double.
-
-    Args:
-        game_id: The-Odds-API game ID
-
-    Returns:
-        Dictionary with player props by market type
-    """
-    api_key = get_api_key("ODDS_API_KEY")
-    if not api_key or not game_id:
-        return {}
-
-    try:
-        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{game_id}/odds"
-        # Include all main prop markets + combos + specials
-        # Ludi-Bot uses: player_points, player_rebounds, player_assists, player_threes,
-        # player_steals, player_blocks, player_turnovers, player_double_double, player_triple_double
-        # Plus combo markets: player_points_rebounds_assists (PRA), player_points_assists (PA),
-        # player_points_rebounds (PR), player_assists_rebounds (AR)
-        markets = ",".join([
-            "player_points",
-            "player_rebounds",
-            "player_assists",
-            "player_threes",
-            "player_steals",
-            "player_blocks",
-            "player_points_rebounds_assists",  # PRA combo
-            "player_points_assists",           # PA combo
-            "player_points_rebounds",          # PR combo
-            "player_assists_rebounds",         # AR combo
-            "player_double_double",            # DD
-            "player_triple_double"             # TD
-        ])
-        params = {
-            "apiKey": api_key,
-            "regions": "us",
-            "markets": markets,
-            "oddsFormat": "american",
-            "bookmakers": "fanduel,draftkings"
-        }
-        response = requests.get(url, params=params, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            props = {
-                "points": [], "rebounds": [], "assists": [], "threes": [],
-                "steals": [], "blocks": [],
-                "pra": [], "pa": [], "pr": [], "ar": [],  # Combos
-                "double_double": [], "triple_double": []  # Specials
-            }
-
-            # Market key to props dict key mapping
-            market_map = {
-                "player_points": "points",
-                "player_rebounds": "rebounds",
-                "player_assists": "assists",
-                "player_threes": "threes",
-                "player_steals": "steals",
-                "player_blocks": "blocks",
-                "player_points_rebounds_assists": "pra",
-                "player_points_assists": "pa",
-                "player_points_rebounds": "pr",
-                "player_assists_rebounds": "ar",
-                "player_double_double": "double_double",
-                "player_triple_double": "triple_double"
-            }
-
-            for book in data.get("bookmakers", []):
-                book_name = book.get("key", "")
-                for market in book.get("markets", []):
-                    market_key = market.get("key", "")
-                    prop_key = market_map.get(market_key)
-                    if not prop_key:
-                        continue
-
-                    for outcome in market.get("outcomes", []):
-                        prop = {
-                            "player": outcome.get("description", ""),
-                            "line": outcome.get("point"),
-                            "odds": outcome.get("price"),
-                            "type": outcome.get("name"),  # Over/Under or Yes/No for DD/TD
-                            "book": book_name
-                        }
-                        # Skip alt lines - main lines typically don't have alternates in standard markets
-                        # The-Odds-API separates alt lines into different market keys
-                        if prop not in props[prop_key]:
-                            props[prop_key].append(prop)
-
-            return props
-    except Exception as e:
-        st.warning(f"Player props fetch error: {e}")
-    return {}
-
-
-def format_props_context(props: dict, max_players: int = 5) -> str:
-    """
-    Format player props into context string for AI analysis.
-    Includes main lines, combos (PRA, PA, etc.), and DD/TD.
-
-    Args:
-        props: Dictionary from fetch_player_props()
-        max_players: Maximum players to include per category
-
-    Returns:
-        Formatted string with prop lines
-    """
-    if not props:
-        return ""
-
-    context = "\n=== PLAYER PROP LINES (The-Odds-API) ===\n"
-
-    # Main stat categories
-    main_categories = [
-        ("points", "PTS"),
-        ("rebounds", "REB"),
-        ("assists", "AST"),
-        ("threes", "3PM"),
-        ("steals", "STL"),
-        ("blocks", "BLK")
-    ]
-
-    # Combo categories
-    combo_categories = [
-        ("pra", "PTS+REB+AST"),
-        ("pa", "PTS+AST"),
-        ("pr", "PTS+REB"),
-        ("ar", "AST+REB")
-    ]
-
-    # Special categories (Yes/No instead of Over/Under)
-    special_categories = [
-        ("double_double", "Double-Double"),
-        ("triple_double", "Triple-Double")
-    ]
-
-    # Process main stats
-    context += "\n**Main Lines:**\n"
-    for category, label in main_categories:
-        players_seen = set()
-        lines = []
-        for prop in props.get(category, []):
-            player = prop.get("player", "")
-            if player and player not in players_seen and prop.get("type") == "Over":
-                players_seen.add(player)
-                line = prop.get("line", "N/A")
-                odds = prop.get("odds", "N/A")
-                lines.append(f"{player}: {line} ({odds:+d})" if isinstance(odds, int) else f"{player}: {line}")
-
-        if lines:
-            context += f"  {label}: " + " | ".join(lines[:max_players]) + "\n"
-
-    # Process combos (compact format)
-    combo_lines = []
-    for category, label in combo_categories:
-        for prop in props.get(category, []):
-            player = prop.get("player", "")
-            if player and prop.get("type") == "Over":
-                line = prop.get("line", "N/A")
-                combo_lines.append(f"{player} {label}: {line}")
-                break  # Just first player per combo for brevity
-
-    if combo_lines:
-        context += f"\n**Combos:** " + " | ".join(combo_lines[:4]) + "\n"
-
-    # Process DD/TD (compact)
-    special_lines = []
-    for category, label in special_categories:
-        for prop in props.get(category, []):
-            player = prop.get("player", "")
-            if player and prop.get("type") == "Yes":
-                odds = prop.get("odds", "N/A")
-                special_lines.append(f"{player} {label} ({odds:+d})" if isinstance(odds, int) else f"{player} {label}")
-
-    if special_lines:
-        context += f"**Specials:** " + " | ".join(special_lines[:3]) + "\n"
-
-    return context
-
-
-def fetch_todays_games() -> list:
-    """Fetch today's NBA games from The-Odds-API"""
-    api_key = get_api_key("ODDS_API_KEY")
-    if not api_key:
-        return []
-
-    try:
-        url = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds/"
-        params = {
-            "apiKey": api_key,
-            "regions": "us",
-            "markets": "spreads,totals,h2h",  # Added h2h (moneyline)
-            "oddsFormat": "american",
-            "bookmakers": "fanduel,draftkings"
-        }
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            games = response.json()
-            # Parse into simpler format
-            parsed = []
-            for game in games:
-                # Use proper team name normalization (handles Odds-API full names)
-                away_full = game.get("away_team", "")
-                home_full = game.get("home_team", "")
-                away = normalize_team(away_full)
-                home = normalize_team(home_full)
-
-                # Get spread, total, and moneyline from first bookmaker
-                spread = None
-                total = None
-                home_ml = None
-                away_ml = None
-                for book in game.get("bookmakers", []):
-                    for market in book.get("markets", []):
-                        if market["key"] == "spreads" and not spread:
-                            for outcome in market["outcomes"]:
-                                if outcome["name"] == home_full:
-                                    spread = outcome["point"]
-                        if market["key"] == "totals" and not total:
-                            for outcome in market["outcomes"]:
-                                if outcome["name"] == "Over":
-                                    total = outcome["point"]
-                        if market["key"] == "h2h" and not home_ml:
-                            for outcome in market["outcomes"]:
-                                if outcome["name"] == home_full:
-                                    home_ml = outcome["price"]
-                                elif outcome["name"] == away_full:
-                                    away_ml = outcome["price"]
-
-                # Parse time
-                commence = game.get("commence_time", "")
-                try:
-                    dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
-                    dt_et = dt.astimezone(ET)
-                    time_str = dt_et.strftime("%I:%M %p")
-                except Exception:
-                    time_str = "TBD"
-
-                parsed.append({
-                    "id": game.get("id"),
-                    "away": away,  # Now properly normalized (e.g., "LAL" not "LAK")
-                    "home": home,  # Now properly normalized (e.g., "NYK" not "KNI")
-                    "away_full": away_full or "Away",
-                    "home_full": home_full or "Home",
-                    "spread": spread,
-                    "total": total,
-                    "home_ml": home_ml,  # Moneyline
-                    "away_ml": away_ml,  # Moneyline
-                    "time": time_str
-                })
-            return parsed
-    except Exception as e:
-        st.error(f"Error fetching games: {e}")
-    return []
-
-
-def get_claude_analysis(prompt: str, user_input: str, model: str = "claude-sonnet-4-20250514") -> str:
-    """Get analysis from Claude API"""
-    api_key = get_api_key("ANTHROPIC_API_KEY")
-    if not api_key:
-        return "Error: ANTHROPIC_API_KEY not found."
-
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=model,
-            max_tokens=2500,
-            messages=[
-                {"role": "user", "content": f"{prompt}\n\n---\n\nANALYZE:\n{user_input}"}
-            ]
-        )
-        return response.content[0].text
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-# =============================================================================
-# Query Parser
-# =============================================================================
-
-def parse_chat_query(query: str) -> Tuple[str, dict]:
-    """
-    Parse natural language query into structured request
-
-    Handles:
-    - Games: "DEN vs NYK", "Lakers @ Suns"
-    - Players: "Luka", "Doncic", "Luka Doncic"
-    - Stats: PTS, AST, REB, 3PM, STL, BLK, TO, MIN, FG, FT, etc.
-    - Combos: PRA, PA, PR, RA, PTS+AST, PTS+REB+AST, stocks, etc.
-    - Props: "Luka PTS 28.5", "Trae assists over 9.5"
-
-    Returns: (query_type, params)
-    """
-    import re
-    query_lower = query.lower().strip()
-    query_original = query.strip()
-
-    # ===================
-    # GAME QUERY PATTERNS
-    # ===================
-    # "DEN vs NYK", "Lakers @ Suns", "Denver versus New York"
-    game_patterns = [
-        r"(\w+)\s+(?:vs\.?|versus|@|at)\s+(\w+)",
-    ]
-    for pattern in game_patterns:
-        match = re.search(pattern, query_lower)
-        if match:
-            # Use proper team normalization (handles "Lakers", "LAL", "Los Angeles", etc.)
-            away = normalize_team(match.group(1))
-            home = normalize_team(match.group(2))
-            return "game", {"away": away, "home": home}
-
-    # ===================
-    # STAT NORMALIZATION
-    # ===================
-    stat_aliases = {
-        # Points
-        "pts": "Points", "points": "Points", "point": "Points", "scoring": "Points",
-        # Assists
-        "ast": "Assists", "assists": "Assists", "assist": "Assists", "dimes": "Assists",
-        # Rebounds
-        "reb": "Rebounds", "rebounds": "Rebounds", "rebound": "Rebounds", "boards": "Rebounds",
-        "trb": "Rebounds", "total rebounds": "Rebounds",
-        # 3-Pointers
-        "3pm": "3PM", "3s": "3PM", "threes": "3PM", "three pointers": "3PM",
-        "3pt": "3PM", "3 pointers": "3PM", "triples": "3PM",
-        # Steals
-        "stl": "Steals", "steals": "Steals", "steal": "Steals",
-        # Blocks
-        "blk": "Blocks", "blocks": "Blocks", "block": "Blocks",
-        # Turnovers
-        "to": "Turnovers", "turnovers": "Turnovers", "turnover": "Turnovers", "tos": "Turnovers",
-        # Minutes
-        "min": "Minutes", "mins": "Minutes", "minutes": "Minutes",
-        # Field Goals
-        "fgm": "FGM", "fg": "FGM", "field goals": "FGM",
-        # Free Throws
-        "ftm": "FTM", "ft": "FTM", "free throws": "FTM", "fts": "FTM",
-        # Fantasy
-        "fpts": "Fantasy", "fantasy": "Fantasy", "fantasy points": "Fantasy", "fp": "Fantasy",
-
-        # === COMBO PROPS ===
-        # PRA (Points + Rebounds + Assists)
-        "pra": "PTS+REB+AST", "pts+reb+ast": "PTS+REB+AST", "pts reb ast": "PTS+REB+AST",
-        "points rebounds assists": "PTS+REB+AST", "p+r+a": "PTS+REB+AST",
-        # PA (Points + Assists)
-        "pa": "PTS+AST", "pts+ast": "PTS+AST", "points assists": "PTS+AST",
-        "points and assists": "PTS+AST", "p+a": "PTS+AST", "pts ast": "PTS+AST",
-        # PR (Points + Rebounds)
-        "pr": "PTS+REB", "pts+reb": "PTS+REB", "points rebounds": "PTS+REB",
-        "points and rebounds": "PTS+REB", "p+r": "PTS+REB", "pts reb": "PTS+REB",
-        # RA (Rebounds + Assists)
-        "ra": "REB+AST", "reb+ast": "REB+AST", "rebounds assists": "REB+AST",
-        "rebounds and assists": "REB+AST", "r+a": "REB+AST", "reb ast": "REB+AST",
-        # Stocks (Steals + Blocks)
-        "stocks": "STL+BLK", "stl+blk": "STL+BLK", "steals blocks": "STL+BLK",
-        "steals and blocks": "STL+BLK", "defensive stats": "STL+BLK",
-        # Boards + Dimes
-        "boards dimes": "REB+AST", "rebounds dimes": "REB+AST",
-        # Double-Double
-        "dd": "Double-Double", "double double": "Double-Double", "double-double": "Double-Double",
-        # Triple-Double
-        "td": "Triple-Double", "triple double": "Triple-Double", "triple-double": "Triple-Double",
-    }
-
-    # ===================
-    # PROP WITH LINE PATTERN
-    # ===================
-    # "Luka PTS 28.5", "Trae Young assists 9.5", "Jokic PRA over 45.5"
-    # Pattern: [name] [stat] [optional: over/under] [number]
-
-    # Build stat pattern from aliases
-    stat_keywords = "|".join(sorted(stat_aliases.keys(), key=len, reverse=True))
-
-    # Pattern 1: Name + Stat + Number
-    prop_pattern = rf"(.+?)\s+({stat_keywords})\s+(?:over|under|o|u)?\s*(\d+\.?\d*)"
-    prop_match = re.search(prop_pattern, query_lower)
-
-    if prop_match:
-        name_raw = prop_match.group(1).strip()
-        stat_raw = prop_match.group(2).strip()
-        line = float(prop_match.group(3))
-
-        # Clean up name (remove common prefixes)
-        name = name_raw.replace("give me", "").replace("info on", "").replace("about", "").strip()
-        name = name.title()
-
-        # Normalize stat
-        stat = stat_aliases.get(stat_raw, stat_raw.upper())
-
-        return "player_prop", {"name": name, "stat": stat, "line": line}
-
-    # ===================
-    # PLAYER + STAT (no line)
-    # ===================
-    # "Luka assists", "Jokic rebounds", "Trae PRA"
-    stat_pattern = rf"(.+?)\s+({stat_keywords})(?:\s|$)"
-    stat_match = re.search(stat_pattern, query_lower)
-
-    if stat_match:
-        name_raw = stat_match.group(1).strip()
-        stat_raw = stat_match.group(2).strip()
-
-        # Clean name
-        name = name_raw.replace("give me", "").replace("info on", "").replace("about", "").strip()
-        name = name.title()
-
-        # Normalize stat
-        stat = stat_aliases.get(stat_raw, stat_raw.upper())
-
-        return "player", {"name": name, "stat": stat}
-
-    # ===================
-    # PLAYER ONLY (general query)
-    # ===================
-    # "Luka", "tell me about Jokic", "info on Trae Young"
-
-    # Remove common prefixes
-    clean_query = query_lower
-    prefixes_to_remove = [
-        "give me info on", "give me information on", "tell me about",
-        "info on", "information on", "about", "what about",
-        "how is", "how's", "analyze", "breakdown", "break down"
-    ]
-    for prefix in prefixes_to_remove:
-        if clean_query.startswith(prefix):
-            clean_query = clean_query[len(prefix):].strip()
-            break
-
-    # If something remains, treat as player name
-    if clean_query and len(clean_query) > 1:
-        return "player", {"name": clean_query.title(), "stat": "All Stats"}
-
-    return "unknown", {}
-
-# =============================================================================
-# UI Components
-# =============================================================================
-
-def render_header():
-    """Render dashboard header"""
-    time_ctx = get_time_context()
-
-    st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155; margin-bottom: 20px;">
-        <div>
-            <h1 style="color: #FBBF24; margin: 0; font-size: 28px;">🏀 Ludi Lite</h1>
-            <p style="color: #94A3B8; margin: 5px 0 0 0; font-size: 14px;">AI Research Lab | {CURRENT_SEASON}</p>
-        </div>
-        <div style="text-align: right;">
-            <span class="time-badge" style="background: {time_ctx['color']}20; color: {time_ctx['color']};">
-                {time_ctx['mode']}
-            </span>
-            <p style="color: #94A3B8; margin: 5px 0 0 0; font-size: 12px;">{time_ctx['timestamp']}</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_game_cards(games: list):
-    """Render clickable game cards"""
-    if not games:
-        st.info("No games found. Enter a game manually below or check API key.")
-        return None
-
-    st.markdown("### 📅 Today's Games")
-    st.markdown("<p style='color: #94A3B8; font-size: 12px;'>Click a game to analyze</p>", unsafe_allow_html=True)
-
-    # Create columns for game cards (responsive)
-    cols = st.columns(min(len(games), 4))
-
-    selected_game = None
-
-    for i, game in enumerate(games):
-        col = cols[i % len(cols)]
-        with col:
-            spread_str = f"{game['home']} {game['spread']:+.1f}" if game['spread'] else "PK"
-            total_str = f"O/U {game['total']}" if game['total'] else ""
-
-            # Create button styled as card
-            if st.button(
-                f"**{game['away']} @ {game['home']}**\n{spread_str} | {total_str}\n{game['time']}",
-                key=f"game_{i}",
-                use_container_width=True
-            ):
-                selected_game = game
-
-    return selected_game
-
-
-def render_chat_interface():
-    """Render chat input for natural language queries"""
-    st.markdown("### 💬 Ask Ludi")
-
-    query = st.text_input(
-        "Ask about a player, prop, or game...",
-        placeholder="Examples: 'Luka assists tonight', 'DEN vs NYK', 'Trae Young PTS 28.5' (Press Enter)",
-        key="chat_input",
-        label_visibility="collapsed"
-    )
-
-    # Auto-analyze when query is entered (press Enter)
-    # Query submission automatically shows BOTH analyses
-    analyze_both = bool(query)  # Auto-trigger on query
-    analyze_method = False  # Not used - always show both
-
-    return query, analyze_both, analyze_method
-
-
-def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False):
-    """Render analysis results side by side"""
-    if show_both:
-        col1, col2 = st.columns(2)
-
-        # Freestyle header - show Perplexity badge if used
-        freestyle_subtitle = "Claude + Perplexity Search" if perplexity_used else "Claude AI"
-        freestyle_icon = "🤖🔍" if perplexity_used else "🤖"
-
-        with col1:
-            st.markdown(f"""
-            <div style="background: #60A5FA20; border: 2px solid #60A5FA; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-                <h3 style="color: #60A5FA; margin: 0;">{freestyle_icon} Freestyle</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">{freestyle_subtitle}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown(freestyle)
-
-        with col2:
-            st.markdown("""
-            <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-                <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">Claude + S.A.V.A.G.E. + Tank01</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown(methodology)
-    else:
-        st.markdown("""
-        <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-            <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method Analysis</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown(methodology)
-
-
-def render_manual_input():
-    """Render manual game/player input as fallback"""
-    with st.expander("📝 Manual Input", expanded=False):
-        input_type = st.radio("Type", ["Game", "Player"], horizontal=True)
-
-        if input_type == "Game":
-            col1, col2 = st.columns(2)
-            with col1:
-                away = st.text_input("Away Team", placeholder="DEN")
-                spread = st.number_input("Spread", value=0.0, step=0.5)
-            with col2:
-                home = st.text_input("Home Team", placeholder="NYK")
-                total = st.number_input("Total", value=220.0, step=0.5)
-
-            context = st.text_area("Context (injuries, B2B, etc.)", height=80)
-            late_news = st.text_area("🚨 Late News", height=60)
-
-            if away and home:
-                return "game", {
-                    "away": away.upper(),
-                    "home": home.upper(),
-                    "spread": spread,
-                    "total": total,
-                    "context": context,
-                    "late_news": late_news
-                }
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                player = st.text_input("Player Name", placeholder="Luka Doncic")
-                team = st.text_input("Team", placeholder="DAL")
-            with col2:
-                opponent = st.text_input("Opponent", placeholder="PHX")
-                stat = st.selectbox("Stat Focus", [
-                    "All Stats",
-                    "--- Single Stats ---",
-                    "Points", "Assists", "Rebounds", "3PM",
-                    "Steals", "Blocks", "Turnovers", "Minutes",
-                    "FGM", "FTM",
-                    "--- Combo Props ---",
-                    "PTS+REB+AST (PRA)", "PTS+AST (PA)", "PTS+REB (PR)",
-                    "REB+AST (RA)", "STL+BLK (Stocks)",
-                    "--- Special ---",
-                    "Double-Double", "Triple-Double", "Fantasy Points"
-                ])
-
-            context = st.text_area("Context", height=60)
-            late_news = st.text_area("🚨 Late News", height=60)
-
-            if player and opponent:
-                return "player", {
-                    "name": player,
-                    "team": team,
-                    "opponent": opponent,
-                    "stat": stat,
-                    "context": context,
-                    "late_news": late_news
-                }
-
-    return None, None
-
-
-def save_analysis(query: str, freestyle: str, methodology: str):
-    """Save analysis to database"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO chat_history (query, freestyle_response, methodology_response)
-        VALUES (?, ?, ?)
-    """, (query, freestyle, methodology))
-    conn.commit()
-    conn.close()
 
 # =============================================================================
 # Main App
@@ -1006,15 +239,48 @@ GAME: {params['away']} @ {params['home']}
         elif query_type in ["player", "player_prop"]:
             stat_focus = params.get('stat', 'All Stats')
             line_info = f"LINE: {params.get('line', 'N/A')}" if params.get('line') else ""
-            opponent = params.get('opponent', 'Unknown')
-            player_context = get_player_specific_context(params['name'])
+
+            # Auto-match player to tonight's game FIRST (so we know team)
+            game_match = match_player_to_game(params['name'], games)
+            # Pass team to player context to avoid redundant broken lookup
+            player_context = get_player_specific_context(params['name'], team_abbr=game_match.get("team"))
+            opponent = game_match.get("opponent", params.get('opponent', 'Unknown'))
+            game_context = ""
+
+            if game_match.get("game"):
+                g = game_match["game"]
+                spread_val = g.get('spread')
+                spread_str = f"{float(spread_val):+.1f}" if spread_val else "PK"
+                total_str = f"O/U {g['total']}" if g.get('total') else ""
+                home_ml = g.get('home_ml')
+                away_ml = g.get('away_ml')
+                ml_str = f"MONEYLINE: {g['away']} {away_ml:+d} / {g['home']} {home_ml:+d}" if isinstance(home_ml, int) else ""
+
+                # Get live matchup context (rosters, injuries, scheme)
+                live_matchup = get_game_specific_context(g['home'], g['away'])
+
+                game_context = f"""
+TONIGHT'S GAME: {g['away']} @ {g['home']}
+SPREAD: {g['home']} {spread_str}  {total_str}
+{ml_str}
+TIME: {g.get('time', 'TBD')}
+{g['away']} Defense: {get_defense_scheme(g['away'])}
+{g['home']} Defense: {get_defense_scheme(g['home'])}
+{g['away']} Offense: {get_offense_scheme(g['away'])}
+{g['home']} Offense: {get_offense_scheme(g['home'])}
+
+{live_matchup}
+"""
 
             analysis_input = f"""
 PLAYER: {params['name']}
+TEAM: {game_match.get('team', 'Unknown')}
+OPPONENT: {opponent}
 STAT FOCUS: {stat_focus}
 {line_info}
 QUERY: {query}
 
+{game_context}
 {player_context}
 """
             query_type = "player"
@@ -1076,9 +342,12 @@ QUERY: {query}
                         freestyle_input = analysis_input + pplx_context
                         perplexity_used = True
                 elif query_type == "player":
-                    # Extract player name from analysis_input
+                    # Use parsed player name + auto-matched opponent
+                    player_name_search = params.get('name', query.split()[0] if query else "")
+                    opp_search = opponent if opponent != 'Unknown' else ''
                     pplx_context = search_player_context(
-                        query.split()[0] if query else "",
+                        player_name=player_name_search,
+                        opponent=opp_search,
                         hours_to_game=int(hours_to_game)
                     )
                     if pplx_context:
@@ -1136,4 +405,3 @@ QUERY: {query}
 
 if __name__ == "__main__":
     main()
-

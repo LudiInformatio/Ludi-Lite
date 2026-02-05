@@ -16,6 +16,25 @@ KNOWN_SUSPENSIONS = [
     {"name": "Paul George", "team": "PHI", "status": "SUSPENDED", "description": "NBA suspension - not on active roster"},
 ]
 
+# Trade deadline roster overrides (Tank01 lags behind real trades)
+# Remove entries once Tank01 rosters sync (usually 24-48 hours post-trade)
+# Format: {"name": player, "team": new_team} - used by match_player_to_game as fallback
+TRADE_DEADLINE_OVERRIDES = {
+    # Feb 4-5, 2026 trades (remove once Tank01 confirms)
+    "luka doncic": "LAL",
+    "deandre ayton": "LAL",
+    "anthony davis": "WAS",
+    "trae young": "WAS",
+    "james harden": "CLE",
+    "darius garland": "LAC",
+    "nikola vucevic": "BOS",
+    "kristaps porzingis": "GSW",
+    "coby white": "CHA",
+    "ayo dosunmu": "MIN",
+    "anfernee simons": "CHI",
+    "jimmy butler": "GSW",
+}
+
 # Defense scheme assignments for 2025-26
 DEFENSE_SCHEMES_2025_26 = {
     "PAINT_PACK": ["OKC", "BOS", "DET", "MIN", "SAS", "ORL"],
@@ -239,12 +258,13 @@ SCHEME MATCHUP:
     return live_context + scheme_context
 
 
-def get_player_specific_context(player_name: str) -> str:
+def get_player_specific_context(player_name: str, team_abbr: str = None) -> str:
     """
     Get context specific to a player for prop analysis.
+    Pass team_abbr if already known (avoids redundant lookup).
     """
     try:
         from tank01_client import format_player_context
-        return format_player_context(player_name)
+        return format_player_context(player_name, team_abbr=team_abbr)
     except Exception:
         return f"\nPlayer context for '{player_name}' unavailable.\n"

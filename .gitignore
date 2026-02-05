@@ -58,3 +58,9 @@ logs/
 # Nested repository (artifact from setup)
 Ludi-Lite/
 
+# Screenshots and patches (dev artifacts)
+*.png
+*.patch
+*.md
+!README.md
+

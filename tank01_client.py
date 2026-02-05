@@ -13,6 +13,28 @@ from datetime import datetime
 TANK01_HOST = "tank01-fantasy-stats.p.rapidapi.com"
 TANK01_BASE_URL = f"https://{TANK01_HOST}"
 
+# Tank01 uses non-standard abbreviations for 5 teams
+# Our system uses standard NBA abbreviations (PHX, GSW, SAS, NOP, NYK)
+# Tank01 expects: PHO, GS, SA, NO, NY
+STANDARD_TO_TANK01 = {
+    "PHX": "PHO",
+    "GSW": "GS",
+    "SAS": "SA",
+    "NOP": "NO",
+    "NYK": "NY",
+}
+TANK01_TO_STANDARD = {v: k for k, v in STANDARD_TO_TANK01.items()}
+
+
+def _to_tank01_abbr(team_abbr: str) -> str:
+    """Convert standard NBA abbreviation to Tank01 format."""
+    return STANDARD_TO_TANK01.get(team_abbr.upper(), team_abbr.upper())
+
+
+def _to_standard_abbr(tank01_abbr: str) -> str:
+    """Convert Tank01 abbreviation to standard NBA format."""
+    return TANK01_TO_STANDARD.get(tank01_abbr.upper(), tank01_abbr.upper())
+
 
 def _get_api_key() -> Optional[str]:
     """Get Tank01 API key from Streamlit secrets or environment"""
@@ -60,7 +82,8 @@ def get_team_roster(team_abbr: str, include_stats: bool = False) -> List[Dict[st
     Returns:
         List of player dictionaries with name, position, injury status, etc.
     """
-    params = {"teamAbv": team_abbr.upper()}
+    tank01_abbr = _to_tank01_abbr(team_abbr)
+    params = {"teamAbv": tank01_abbr}
     if include_stats:
         params["statsToGet"] = "averages"
 
@@ -122,9 +145,16 @@ def get_all_teams_with_rosters() -> Dict[str, List[str]]:
 
     teams = {}
     for team in data["body"]:
-        abbr = team.get("teamAbv", "")
+        abbr = _to_standard_abbr(team.get("teamAbv", ""))
         roster = team.get("Roster", [])
-        teams[abbr] = [p.get("longName", p.get("espnName", "")) for p in roster]
+        # Roster items can be strings (player IDs) or dicts (player objects)
+        names = []
+        for p in roster:
+            if isinstance(p, str):
+                names.append(p)
+            elif isinstance(p, dict):
+                names.append(p.get("longName", p.get("espnName", "")))
+        teams[abbr] = names
 
     return teams
 
@@ -156,29 +186,43 @@ def get_depth_chart(team_abbr: str) -> Dict[str, List[str]]:
     Returns:
         Dictionary mapping position to list of players
     """
-    data = _make_request("getNBADepthCharts", {"teamAbv": team_abbr.upper()})
+    data = _make_request("getNBADepthCharts", {"teamAbv": _to_tank01_abbr(team_abbr)})
     if not data or "body" not in data:
         return {}
 
     return data["body"]
 
 
-def find_player_team(player_name: str) -> Optional[str]:
+def find_player_team(player_name: str, search_teams: list = None) -> Optional[str]:
     """
-    Find which team a player is currently on.
+    Find which team a player is currently on by searching live rosters.
+    Uses get_team_roster() (per-team endpoint with full player names).
 
     Args:
         player_name: Player name (partial match supported)
+        search_teams: Optional list of team abbreviations to search.
+                      If None, searches all 30 teams (cached, so fast after first call).
 
     Returns:
-        Team abbreviation or None if not found
+        Standard team abbreviation or None if not found
     """
-    teams = get_all_teams_with_rosters()
-    player_lower = player_name.lower()
+    player_lower = player_name.lower().strip()
 
-    for team_abbr, roster in teams.items():
+    # Default: search all 30 NBA teams
+    if search_teams is None:
+        search_teams = [
+            "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET",
+            "GSW", "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN",
+            "NOP", "NYK", "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS",
+            "TOR", "UTA", "WAS"
+        ]
+
+    for team_abbr in search_teams:
+        roster = get_team_roster(team_abbr)
+        if not roster:
+            continue
         for player in roster:
-            if player_lower in player.lower():
+            if player_lower in player.get("name", "").lower():
                 return team_abbr
 
     return None
@@ -332,17 +376,18 @@ def get_team_recent_record(team_abbr: str, num_games: int = 5) -> Dict[str, Any]
     }
 
 
-def format_player_context(player_name: str) -> str:
+def format_player_context(player_name: str, team_abbr: str = None) -> str:
     """
     Format player-specific context for prop analysis.
 
     Args:
         player_name: Player name
+        team_abbr: Optional team abbreviation (skips lookup if provided)
 
     Returns:
         Formatted player context string
     """
-    team = find_player_team(player_name)
+    team = team_abbr or find_player_team(player_name)
     if not team:
         return f"\nPlayer '{player_name}' not found in current rosters.\n"
 
