@@ -218,26 +218,46 @@ Confidence: {time_context['confidence']}
 # API Functions
 # =============================================================================
 
+def get_claude_oauth_token() -> Optional[str]:
+    """Get Claude OAuth token from ~/.claude/config.json"""
+    try:
+        config_path = os.path.expanduser("~/.claude/config.json")
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get('oauthToken')
+    except Exception:
+        pass
+    return None
+
+
 def get_api_key(key_name: str) -> Optional[str]:
     """
     Get API key with priority:
-    1. Streamlit Cloud secrets (st.secrets)
-    2. Environment variables
-    3. Local Ludi-Bot .env file (development fallback)
+    1. Claude OAuth token (if key is ANTHROPIC_API_KEY)
+    2. Streamlit Cloud secrets (st.secrets)
+    3. Environment variables
+    4. Local Ludi-Bot .env file (development fallback)
     """
-    # Priority 1: Streamlit Cloud secrets
+    # Priority 1: For Anthropic, try OAuth token first
+    if key_name == "ANTHROPIC_API_KEY":
+        oauth_token = get_claude_oauth_token()
+        if oauth_token:
+            return oauth_token
+
+    # Priority 2: Streamlit Cloud secrets
     try:
         if hasattr(st, 'secrets') and key_name in st.secrets:
             return st.secrets[key_name]
     except Exception:
         pass
 
-    # Priority 2: Environment variable
+    # Priority 3: Environment variable
     key = os.getenv(key_name)
     if key:
         return key
 
-    # Priority 3: Local .env file (development only)
+    # Priority 4: Local .env file (development only)
     env_path = os.path.expanduser("~/Ludi-Bot/.env")
     if os.path.exists(env_path):
         with open(env_path) as f:
