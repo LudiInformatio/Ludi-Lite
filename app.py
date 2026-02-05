@@ -722,11 +722,21 @@ def main():
     # Priority: Selected game card > Chat query > Manual input
     if selected_game:
         query_type = "game"
+        # Format spread safely
+        spread_value = selected_game.get('spread')
+        if spread_value is not None and spread_value != '':
+            try:
+                spread_str = f"{float(spread_value):+.1f}"
+            except (ValueError, TypeError):
+                spread_str = 'PK'
+        else:
+            spread_str = 'PK'
+
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
-SPREAD: {selected_game['home']} {selected_game['spread']:+.1f if selected_game['spread'] else 'PK'}
-TOTAL: {selected_game['total'] or 'TBD'}
-TIME: {selected_game['time']}
+SPREAD: {selected_game['home']} {spread_str}
+TOTAL: {selected_game.get('total') or 'TBD'}
+TIME: {selected_game.get('time') or 'TBD'}
 
 {selected_game['away']} Defense: {get_defense_scheme(selected_game['away'])}
 {selected_game['home']} Defense: {get_defense_scheme(selected_game['home'])}
