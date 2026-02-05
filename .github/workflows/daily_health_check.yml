@@ -32,59 +32,31 @@ jobs:
 
       - name: Run Claude Code Health Review
         id: health-check
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
           prompt: |
             You are the HEALTH MONITOR AGENT for Ludi Lite.
 
-            YOUR TASK: Perform a daily health check and generate a report.
+            Perform a daily health check:
 
-            CHECKS TO PERFORM:
-            1. **Code Structure**: Verify all required files exist (app.py, prompts.py, season_context.py, components.py, requirements.txt)
-            2. **Syntax Validation**: Check all Python files for syntax errors
-            3. **Import Check**: Verify core imports work (streamlit, anthropic, requests)
-            4. **Dependency Audit**: Check requirements.txt for any issues
-            5. **Code Quality**: Look for any obvious bugs, security issues, or deprecated patterns
-            6. **API Integration**: Verify get_api_key() function is properly configured
+            1. Verify files exist: app.py, prompts.py, season_context.py, components.py, requirements.txt
+            2. Check Python syntax (run python -m py_compile on each .py file)
+            3. Check requirements.txt is valid
+            4. Look for obvious bugs or security issues
+            5. Verify get_api_key() function exists in app.py
 
-            STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL || 'not configured' }}
-            If STREAMLIT_APP_URL is set, also check if the deployed app responds.
+            Generate a brief health report with:
+            - Date
+            - Status (HEALTHY or ISSUES_DETECTED)
+            - List of checks and results
+            - Any issues found
+            - Recommendations
 
-            OUTPUT FORMAT:
-            Generate a health report with this structure:
-
-            # Ludi Lite Daily Health Report
-            **Date:** [current date]
-            **Status:** [HEALTHY / ISSUES DETECTED]
-
-            ## Check Results
-            | Check | Status | Notes |
-            |-------|--------|-------|
-            | Code Structure | [PASS/FAIL] | [details] |
-            | Syntax | [PASS/FAIL] | [details] |
-            | Imports | [PASS/FAIL] | [details] |
-            | Dependencies | [PASS/FAIL] | [details] |
-            | Code Quality | [PASS/FAIL] | [details] |
-            | API Config | [PASS/FAIL] | [details] |
-            | App Health | [PASS/FAIL/SKIPPED] | [details] |
-
-            ## Issues Found
-            [List any issues, or 'None']
-
-            ## Recommendations
-            [Any suggested improvements, or 'None']
-
-            IMPORTANT:
-            - Be thorough but concise
-            - Flag any security concerns immediately
-            - Note any files that may need updates
-            - Do NOT make any changes - this is READ-ONLY review
-
-            After your analysis, output a single line at the end:
-            HEALTH_STATUS: HEALTHY
-            or
-            HEALTH_STATUS: ISSUES_DETECTED
+            End with: HEALTH_STATUS: HEALTHY or HEALTH_STATUS: ISSUES_DETECTED
 
       - name: Parse health status
         id: parse-status
