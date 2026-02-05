@@ -37,7 +37,6 @@ def get_api_key(key_name: str) -> Optional[str]:
     1. Claude OAuth token (if key is ANTHROPIC_API_KEY)
     2. Streamlit Cloud secrets (st.secrets)
     3. Environment variables
-    4. Local Ludi-Bot .env file (development fallback)
     """
     # Priority 1: For Anthropic, try OAuth token first
     if key_name == "ANTHROPIC_API_KEY":
@@ -56,14 +55,6 @@ def get_api_key(key_name: str) -> Optional[str]:
     key = os.getenv(key_name)
     if key:
         return key
-
-    # Priority 4: Local .env file (development only)
-    env_path = os.path.expanduser("~/Ludi-Bot/.env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                if line.startswith(f"{key_name}="):
-                    return line.strip().split("=", 1)[1].strip('"\'')
 
     return None
 
