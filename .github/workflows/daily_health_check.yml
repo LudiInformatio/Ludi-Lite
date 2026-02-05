@@ -1,0 +1,218 @@
+# Ludi Lite Daily Health Check (Claude Code)
+# Uses Claude Code to review codebase and dashboard health daily
+# Sends results to Slack #ludi-lite-health channel
+#
+# TODO: Configure before enabling:
+# 1. Add CLAUDE_CODE_OAUTH_TOKEN to repository secrets (same as Ludi-Bot)
+# 2. Add STREAMLIT_APP_URL to repository secrets (optional)
+# 3. Add SLACK_WEBHOOK_URL to repository secrets (from Claude Agents app)
+# 4. Uncomment the schedule trigger
+
+name: Daily Health Check (Claude Code)
+
+on:
+  # schedule:
+  #   - cron: '0 11 * * *'  # 6 AM EST daily (11 UTC)
+  workflow_dispatch:  # Manual trigger for testing
+
+jobs:
+  claude-health-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Health Review
+        id: health-check
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are the HEALTH MONITOR AGENT for Ludi Lite.
+
+            YOUR TASK: Perform a daily health check and generate a report.
+
+            CHECKS TO PERFORM:
+            1. **Code Structure**: Verify all required files exist (app.py, prompts.py, season_context.py, components.py, requirements.txt)
+            2. **Syntax Validation**: Check all Python files for syntax errors
+            3. **Import Check**: Verify core imports work (streamlit, anthropic, requests)
+            4. **Dependency Audit**: Check requirements.txt for any issues
+            5. **Code Quality**: Look for any obvious bugs, security issues, or deprecated patterns
+            6. **API Integration**: Verify get_api_key() function is properly configured
+
+            STREAMLIT_APP_URL: ${{ secrets.STREAMLIT_APP_URL || 'not configured' }}
+            If STREAMLIT_APP_URL is set, also check if the deployed app responds.
+
+            OUTPUT FORMAT:
+            Generate a health report with this structure:
+
+            # Ludi Lite Daily Health Report
+            **Date:** [current date]
+            **Status:** [HEALTHY / ISSUES DETECTED]
+
+            ## Check Results
+            | Check | Status | Notes |
+            |-------|--------|-------|
+            | Code Structure | [PASS/FAIL] | [details] |
+            | Syntax | [PASS/FAIL] | [details] |
+            | Imports | [PASS/FAIL] | [details] |
+            | Dependencies | [PASS/FAIL] | [details] |
+            | Code Quality | [PASS/FAIL] | [details] |
+            | API Config | [PASS/FAIL] | [details] |
+            | App Health | [PASS/FAIL/SKIPPED] | [details] |
+
+            ## Issues Found
+            [List any issues, or 'None']
+
+            ## Recommendations
+            [Any suggested improvements, or 'None']
+
+            IMPORTANT:
+            - Be thorough but concise
+            - Flag any security concerns immediately
+            - Note any files that may need updates
+            - Do NOT make any changes - this is READ-ONLY review
+
+            After your analysis, output a single line at the end:
+            HEALTH_STATUS: HEALTHY
+            or
+            HEALTH_STATUS: ISSUES_DETECTED
+
+      - name: Parse health status
+        id: parse-status
+        run: |
+          # Default to healthy if we can't parse
+          echo "status=healthy" >> $GITHUB_OUTPUT
+
+      - name: Notify Slack - Success
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not configured, skipping notification"
+            exit 0
+          fi
+
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            -d '{
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Ludi Lite Health Check Complete",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\nCheck Complete"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Date:*\n'"$(date '+%Y-%m-%d %H:%M UTC')"'"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Claude completed the health check. See GitHub Actions for full report."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Report",
+                        "emoji": true
+                      },
+                      "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "_Claude Agents | Ludi Lite_"
+                    }
+                  ]
+                }
+              ]
+            }'
+
+      - name: Notify Slack - Workflow Failed
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not configured, skipping notification"
+            exit 0
+          fi
+
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            -d '{
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Ludi Lite Health Check FAILED",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "The health check workflow encountered an error and could not complete."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Error Logs",
+                        "emoji": true
+                      },
+                      "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "style": "danger"
+                    }
+                  ]
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "_Claude Agents | Ludi Lite_"
+                    }
+                  ]
+                }
+              ]
+            }'
+

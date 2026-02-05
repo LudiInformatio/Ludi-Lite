@@ -54,3 +54,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Nested repository (artifact from setup)
+Ludi-Lite/
+
