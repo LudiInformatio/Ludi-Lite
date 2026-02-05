@@ -55,22 +55,42 @@ def get_live_roster_context() -> str:
         from tank01_client import get_injury_list
 
         injuries = get_injury_list()
-        key_injuries = [inj for inj in injuries if inj.get("designation") in ["Out", "Doubtful"]]
 
-        injury_report = "\n=== CURRENT INJURY REPORT (LIVE from Tank01) ===\n"
-        if key_injuries:
-            for inj in key_injuries[:15]:
-                injury_report += f"- {inj['name']} ({inj['team']}): {inj['designation']}"
-                if inj.get('description'):
-                    injury_report += f" - {inj['description']}"
-                injury_report += "\n"
-        else:
-            injury_report += "No major injuries reported.\n"
+        # Separate by severity - NOT PLAYING vs GAME-TIME DECISIONS
+        not_playing = []
+        questionable = []
+
+        for inj in injuries:
+            designation = inj.get("designation", "").upper()
+            player_line = f"- {inj['name']} ({inj['team']}): {inj.get('designation', 'Unknown')}"
+            if inj.get('description'):
+                player_line += f" - {inj['description']}"
+
+            # NOT PLAYING = Out, Suspended, Doubtful, Inactive
+            if any(status in designation for status in ["OUT", "SUSPENDED", "DOUBTFUL", "INACTIVE"]):
+                not_playing.append(player_line)
+            # GAME-TIME DECISION = Questionable, Probable
+            elif any(status in designation for status in ["QUESTIONABLE", "PROBABLE"]):
+                questionable.append(player_line)
+
+        injury_report = "\n=== TONIGHT'S INJURY REPORT (Tank01 Live) ===\n"
+        injury_report += f"[{len(injuries)} total players on injury list]\n\n"
+
+        if not_playing:
+            injury_report += "**NOT PLAYING (DO NOT ANALYZE THESE PLAYERS):**\n"
+            injury_report += "\n".join(not_playing[:20]) + "\n"
+
+        if questionable:
+            injury_report += "\n**GAME-TIME DECISIONS:**\n" + "\n".join(questionable[:10]) + "\n"
+
+        if not not_playing and not questionable:
+            injury_report += "No major injuries/suspensions reported.\n"
 
         return injury_report
 
     except Exception as e:
-        return f"\n(Live injury data unavailable)\n"
+        import traceback
+        return f"\n=== INJURY REPORT ===\n⚠️ Tank01 API Error: {str(e)}\nCheck TANK01_KEY in Streamlit secrets.\n"
 
 
 def get_static_roster_context() -> str:
