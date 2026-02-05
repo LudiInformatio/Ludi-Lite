@@ -26,6 +26,17 @@ from season_context import (
     get_full_season_context,
     CURRENT_SEASON
 )
+# Optional Perplexity integration for Freestyle
+try:
+    from perplexity_client import search_game_context, search_player_context, is_perplexity_available
+    PERPLEXITY_ENABLED = is_perplexity_available()
+except ImportError:
+    PERPLEXITY_ENABLED = False
+    def search_game_context(*args): return ""
+    def search_player_context(*args): return ""
+
+# Team name normalization (handles Odds-API vs Tank01 naming differences)
+from team_mapping import normalize_team, get_full_name
 
 # Timezone for game times (Eastern)
 ET = pytz.timezone('America/New_York')
@@ -301,8 +312,11 @@ def fetch_todays_games() -> list:
             # Parse into simpler format
             parsed = []
             for game in games:
-                away = game.get("away_team", "").split()[-1]  # Get last word (team name)
-                home = game.get("home_team", "").split()[-1]
+                # Use proper team name normalization (handles Odds-API full names)
+                away_full = game.get("away_team", "")
+                home_full = game.get("home_team", "")
+                away = normalize_team(away_full)
+                home = normalize_team(home_full)
 
                 # Get spread and total from first bookmaker
                 spread = None
@@ -311,7 +325,7 @@ def fetch_todays_games() -> list:
                     for market in book.get("markets", []):
                         if market["key"] == "spreads" and not spread:
                             for outcome in market["outcomes"]:
-                                if outcome["name"] == game["home_team"]:
+                                if outcome["name"] == home_full:
                                     spread = outcome["point"]
                         if market["key"] == "totals" and not total:
                             for outcome in market["outcomes"]:
@@ -329,10 +343,10 @@ def fetch_todays_games() -> list:
 
                 parsed.append({
                     "id": game.get("id"),
-                    "away": away[:3].upper() if away else "???",
-                    "home": home[:3].upper() if home else "???",
-                    "away_full": game.get("away_team", "Away"),
-                    "home_full": game.get("home_team", "Home"),
+                    "away": away,  # Now properly normalized (e.g., "LAL" not "LAK")
+                    "home": home,  # Now properly normalized (e.g., "NYK" not "KNI")
+                    "away_full": away_full or "Away",
+                    "home_full": home_full or "Home",
                     "spread": spread,
                     "total": total,
                     "time": time_str
@@ -393,8 +407,9 @@ def parse_chat_query(query: str) -> Tuple[str, dict]:
     for pattern in game_patterns:
         match = re.search(pattern, query_lower)
         if match:
-            away = match.group(1).upper()[:3]
-            home = match.group(2).upper()[:3]
+            # Use proper team normalization (handles "Lakers", "LAL", "Los Angeles", etc.)
+            away = normalize_team(match.group(1))
+            home = normalize_team(match.group(2))
             return "game", {"away": away, "home": home}
 
     # ===================
@@ -595,16 +610,20 @@ def render_chat_interface():
     return query, analyze_both, analyze_method
 
 
-def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True):
+def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False):
     """Render analysis results side by side"""
     if show_both:
         col1, col2 = st.columns(2)
 
+        # Freestyle header - show Perplexity badge if used
+        freestyle_subtitle = "Claude + Perplexity Search" if perplexity_used else "Claude AI"
+        freestyle_icon = "🤖🔍" if perplexity_used else "🤖"
+
         with col1:
-            st.markdown("""
+            st.markdown(f"""
             <div style="background: #60A5FA20; border: 2px solid #60A5FA; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-                <h3 style="color: #60A5FA; margin: 0;">🤖 Freestyle</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">Raw AI analysis</p>
+                <h3 style="color: #60A5FA; margin: 0;">{freestyle_icon} Freestyle</h3>
+                <p style="color: #94A3B8; margin: 0; font-size: 11px;">{freestyle_subtitle}</p>
             </div>
             """, unsafe_allow_html=True)
             st.markdown(freestyle)
@@ -613,7 +632,7 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
             st.markdown("""
             <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
                 <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">S.A.V.A.G.E. framework</p>
+                <p style="color: #94A3B8; margin: 0; font-size: 11px;">Claude + S.A.V.A.G.E. + Tank01</p>
             </div>
             """, unsafe_allow_html=True)
             st.markdown(methodology)
@@ -838,14 +857,35 @@ CONTEXT: {manual_params.get('context', 'None')}
         # Determine model
         model = "claude-sonnet-4-20250514"
 
+        # Enhance Freestyle with Perplexity real-time search (if available)
+        freestyle_input = analysis_input
+        perplexity_used = False
+        if PERPLEXITY_ENABLED and (analyze_both or selected_game):
+            with st.spinner("🔍 Searching real-time data..."):
+                if query_type == "game" and selected_game:
+                    pplx_context = search_game_context(
+                        selected_game.get('away_full', selected_game['away']),
+                        selected_game.get('home_full', selected_game['home'])
+                    )
+                    if pplx_context:
+                        freestyle_input = analysis_input + pplx_context
+                        perplexity_used = True
+                elif query_type == "player":
+                    # Extract player name from analysis_input
+                    pplx_context = search_player_context(query.split()[0] if query else "")
+                    if pplx_context:
+                        freestyle_input = analysis_input + pplx_context
+                        perplexity_used = True
+
         if analyze_both or selected_game:
-            with st.spinner("🤖 Running Freestyle analysis..."):
-                freestyle = get_claude_analysis(prompt_freestyle, analysis_input, model)
+            spinner_text = "🤖🔍 Running Freestyle + Perplexity..." if perplexity_used else "🤖 Running Freestyle analysis..."
+            with st.spinner(spinner_text):
+                freestyle = get_claude_analysis(prompt_freestyle, freestyle_input, model)
 
             with st.spinner("🎯 Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
-            render_analysis_output(freestyle, methodology, show_both=True)
+            render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used)
 
             # Save option
             if st.button("💾 Save Analysis"):
