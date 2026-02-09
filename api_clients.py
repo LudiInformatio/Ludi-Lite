@@ -308,8 +308,13 @@ def fetch_todays_games() -> list:
                     "total": total,
                     "home_ml": home_ml,  # Moneyline
                     "away_ml": away_ml,  # Moneyline
-                    "time": time_str
+                    "time": time_str,
+                    "commence_time": commence  # Raw ISO timestamp for sorting
                 })
+
+            # Sort games chronologically (earliest tipoff first)
+            parsed.sort(key=lambda g: g.get('commence_time', '9999-12-31T23:59:59Z'))
+
             return parsed
     except Exception as e:
         st.error(f"Error fetching games: {e}")

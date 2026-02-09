@@ -3,9 +3,53 @@ UI Components for Ludi Lite
 Streamlit rendering functions for the dashboard.
 """
 
+import re
 import streamlit as st
+from datetime import datetime, timedelta
+import pytz
 from season_context import CURRENT_SEASON
 from time_utils import get_time_context
+
+# Timezone constant
+ET = pytz.timezone('America/New_York')
+
+
+def clean_ai_response(response: str) -> str:
+    """
+    Remove leaked system instructions from AI output.
+    These patterns come from ROSTER_RULES in prompts.py that sometimes
+    echo back in Claude's response.
+    """
+    if not response:
+        return response
+
+    leak_patterns = [
+        # Full ROSTER_RULES block
+        r"=== CRITICAL: ROSTER VERIFICATION ===.*?(?=\n\n|\n##|\n\*\*[A-Z]|\Z)",
+        # Individual instruction lines
+        r"\*\*BEFORE listing any player.*?(?=\n\n|\n-|\Z)",
+        r"- If a player is listed as OUT.*?\n",
+        r"- NEVER put injured/suspended players.*?\n",
+        r"- Only include players who are ACTIVE.*?\n",
+        r"- If unsure, say \"status unclear\".*?\n",
+        # Internal markers
+        r"\[INTERNAL.*?\].*?\n",
+        r"\[DO NOT OUTPUT\].*?\n",
+        # Common instruction echoes
+        r"(?i)always name.*?top.*?players.*?\n",
+        r"(?i)check the injury report above.*?\n",
+        r"(?i)use ONLY the rosters/injuries from.*?\n",
+    ]
+
+    cleaned = response
+    for pattern in leak_patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+
+    # Clean up resulting extra whitespace
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    cleaned = re.sub(r'^\s*\n', '', cleaned)  # Leading blank lines
+
+    return cleaned.strip()
 
 
 def render_header():
@@ -29,34 +73,105 @@ def render_header():
 
 
 def render_game_cards(games: list):
-    """Render clickable game cards"""
+    """
+    Render clickable game cards grouped by date.
+    Shows TODAY and TOMORROW sections with games sorted chronologically.
+    """
     if not games:
-        st.info("No games found. Enter a game manually below or check API key.")
+        st.info("📭 No games scheduled. Check back later!")
         return None
 
-    st.markdown("### 📅 Today's Games")
-    st.markdown("<p style='color: #94A3B8; font-size: 12px;'>Click a game to analyze</p>", unsafe_allow_html=True)
+    # Group games by date
+    today = datetime.now(ET).date()
+    tomorrow = today + timedelta(days=1)
 
-    # Create columns for game cards (responsive)
-    cols = st.columns(min(len(games), 4))
+    today_games = []
+    tomorrow_games = []
+    other_games = []
+
+    for game in games:
+        try:
+            commence = game.get('commence_time', '')
+            if commence:
+                game_dt = datetime.fromisoformat(
+                    commence.replace('Z', '+00:00')
+                ).astimezone(ET).date()
+
+                if game_dt == today:
+                    today_games.append(game)
+                elif game_dt == tomorrow:
+                    tomorrow_games.append(game)
+                else:
+                    other_games.append(game)
+            else:
+                other_games.append(game)
+        except Exception:
+            other_games.append(game)
 
     selected_game = None
 
-    for i, game in enumerate(games):
-        col = cols[i % len(cols)]
-        with col:
-            spread_str = f"{game['home']} {game['spread']:+.1f}" if game['spread'] else "PK"
-            total_str = f"O/U {game['total']}" if game['total'] else ""
+    # Render TODAY section
+    if today_games:
+        st.markdown("#### 🏀 TODAY")
+        selected = _render_game_section(today_games, "today")
+        if selected:
+            selected_game = selected
 
-            # Create button styled as card
-            if st.button(
-                f"**{game['away']} @ {game['home']}**\n{spread_str} | {total_str}\n{game['time']}",
-                key=f"game_{i}",
-                use_container_width=True
-            ):
-                selected_game = game
+    # Render TOMORROW section
+    if tomorrow_games:
+        st.markdown("#### 📆 TOMORROW")
+        selected = _render_game_section(tomorrow_games, "tomorrow")
+        if selected:
+            selected_game = selected
+
+    # Render OTHER section (future games beyond tomorrow)
+    if other_games and not today_games and not tomorrow_games:
+        st.markdown("#### 📅 UPCOMING")
+        selected = _render_game_section(other_games, "other")
+        if selected:
+            selected_game = selected
 
     return selected_game
+
+
+def _render_game_section(games: list, prefix: str):
+    """
+    Render a section of game cards in a responsive grid.
+    Returns the selected game if user clicks one.
+    """
+    # Responsive columns: max 4 on desktop, wraps on mobile
+    num_cols = min(len(games), 4)
+    cols = st.columns(num_cols)
+    selected = None
+
+    for i, game in enumerate(games):
+        col = cols[i % num_cols]
+        with col:
+            # Format spread
+            spread = game.get('spread')
+            if spread is not None:
+                try:
+                    spread_str = f"{game['home']} {float(spread):+.1f}"
+                except (ValueError, TypeError):
+                    spread_str = "PK"
+            else:
+                spread_str = "PK"
+
+            # Format total
+            total = game.get('total')
+            total_str = f"O/U {total}" if total else ""
+
+            # Create button with game info
+            button_text = f"**{game['away']} @ {game['home']}**\n{spread_str} | {total_str}\n🕐 {game.get('time', 'TBD')}"
+
+            if st.button(
+                button_text,
+                key=f"game_{prefix}_{i}_{game.get('id', i)}",
+                use_container_width=True
+            ):
+                selected = game
+
+    return selected
 
 
 def render_chat_interface():
@@ -80,6 +195,10 @@ def render_chat_interface():
 
 def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False):
     """Render analysis results side by side"""
+    # Clean responses before rendering
+    freestyle_cleaned = clean_ai_response(freestyle) if freestyle else ""
+    methodology_cleaned = clean_ai_response(methodology) if methodology else ""
+
     if show_both:
         col1, col2 = st.columns(2)
 
@@ -94,7 +213,7 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
                 <p style="color: #94A3B8; margin: 0; font-size: 11px;">{freestyle_subtitle}</p>
             </div>
             """, unsafe_allow_html=True)
-            st.markdown(freestyle)
+            st.markdown(freestyle_cleaned)
 
         with col2:
             st.markdown("""
@@ -103,14 +222,14 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
                 <p style="color: #94A3B8; margin: 0; font-size: 11px;">Claude + S.A.V.A.G.E. + Tank01</p>
             </div>
             """, unsafe_allow_html=True)
-            st.markdown(methodology)
+            st.markdown(methodology_cleaned)
     else:
         st.markdown("""
         <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
             <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method Analysis</h3>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown(methodology)
+        st.markdown(methodology_cleaned)
 
 
 def render_manual_input():
