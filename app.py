@@ -56,63 +56,107 @@ st.set_page_config(
     initial_sidebar_state="collapsed"  # Better for mobile
 )
 
-# Custom CSS for mobile-friendly cards
+# Custom CSS - Lo-Fi Premium Palette
 st.markdown("""
 <style>
-    /* Dark theme */
-    .stApp {
-        background-color: #0F172A;
+    /* Lo-Fi Premium Color Palette */
+    :root {
+        --charcoal: #383531;
+        --amber: #C6A34F;
+        --stone: #8A867F;
+        --paper: #f5f3ed;
+        --cream: #FAF8F5;
+        --dark-navy: #0F172A;
+        --success: #4A7C59;
+        --info: #5B7C99;
     }
 
-    /* Game card styling */
+    /* Dark theme with warm undertones */
+    .stApp {
+        background-color: var(--charcoal);
+    }
+
+    /* Game card styling - Lo-Fi Premium */
     .game-card {
-        background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+        background: linear-gradient(135deg, #2D2A26 0%, #3D3935 100%);
         border-radius: 12px;
         padding: 15px;
         margin: 8px 0;
-        border: 1px solid #475569;
+        border: 1px solid var(--stone);
         cursor: pointer;
         transition: transform 0.2s, box-shadow 0.2s;
     }
     .game-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);
+        box-shadow: 0 4px 12px rgba(198, 163, 79, 0.2);
+        border-color: var(--amber);
     }
     .game-card h3 {
-        color: #F8FAFC;
+        color: var(--paper);
         margin: 0 0 8px 0;
         font-size: 18px;
     }
     .game-card .line {
-        color: #FBBF24;
+        color: var(--amber);
         font-weight: bold;
         font-size: 14px;
     }
     .game-card .time {
-        color: #94A3B8;
+        color: var(--stone);
         font-size: 12px;
     }
 
-    /* Chat styling */
-    .chat-input {
-        background: #1E293B;
-        border: 1px solid #475569;
-        border-radius: 8px;
-        color: #F8FAFC;
-    }
-
-    /* Analysis panels */
+    /* Analysis panels - Warmer tones */
     .freestyle-panel {
-        background: #1E3A5F;
-        border: 2px solid #60A5FA;
-        border-radius: 8px;
-        padding: 15px;
+        background: linear-gradient(135deg, #2A3441 0%, #344152 100%);
+        border: 2px solid var(--info);
+        border-radius: 12px;
+        padding: 20px;
     }
     .method-panel {
-        background: #1A3D2E;
-        border: 2px solid #10B981;
+        background: linear-gradient(135deg, #2A3D2E 0%, #344D3A 100%);
+        border: 2px solid var(--success);
+        border-radius: 12px;
+        padding: 20px;
+    }
+
+    /* PropsMadness-style stat cards */
+    .stat-card {
+        background: #2D2A26;
+        border: 1px solid var(--stone);
         border-radius: 8px;
-        padding: 15px;
+        padding: 12px;
+        text-align: center;
+    }
+    .stat-card .label {
+        color: var(--stone);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .stat-card .value {
+        color: var(--paper);
+        font-size: 24px;
+        font-weight: bold;
+    }
+    .stat-card .subtext {
+        color: var(--amber);
+        font-size: 12px;
+    }
+
+    /* Hit rate indicator */
+    .hit-rate {
+        display: inline-flex;
+        gap: 3px;
+    }
+    .hit-rate .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--stone);
+    }
+    .hit-rate .dot.active {
+        background: var(--amber);
     }
 
     /* Time badge */
@@ -122,6 +166,21 @@ st.markdown("""
         border-radius: 20px;
         font-size: 12px;
         font-weight: bold;
+        background: rgba(198, 163, 79, 0.15);
+        color: var(--amber);
+        border: 1px solid var(--amber);
+    }
+
+    /* Section headers */
+    .section-header {
+        color: var(--paper);
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--stone);
     }
 
     /* Mobile responsive */
@@ -132,9 +191,12 @@ st.markdown("""
         .game-card h3 {
             font-size: 16px;
         }
+        .stat-card .value {
+            font-size: 20px;
+        }
     }
 
-    /* Hide Streamlit branding for cleaner look */
+    /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -375,30 +437,34 @@ QUERY: {query}
 
             render_analysis_output("", methodology, show_both=False)
 
-    # Footer with data sources
+    # Footer with data sources - Lo-Fi Premium
     st.markdown("---")
 
     # Data source badges
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 10px;">
-        <span style="background: #3B82F620; border: 1px solid #3B82F6; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #60A5FA;">Claude AI</span>
-        <span style="background: #10B98120; border: 1px solid #10B981; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #34D399;">Tank01 API</span>
-        <span style="background: #F59E0B20; border: 1px solid #F59E0B; border-radius: 4px; padding: 2px 8px; margin: 2px; font-size: 10px; color: #FBBF24;">The-Odds-API</span>
+    <div style="text-align: center; margin-bottom: 12px;">
+        <span style="background: rgba(91, 124, 153, 0.15); border: 1px solid #5B7C99; border-radius: 4px;
+                    padding: 4px 10px; margin: 3px; font-size: 10px; color: #5B7C99; display: inline-block;">Claude AI</span>
+        <span style="background: rgba(74, 124, 89, 0.15); border: 1px solid #4A7C59; border-radius: 4px;
+                    padding: 4px 10px; margin: 3px; font-size: 10px; color: #4A7C59; display: inline-block;">Tank01 API</span>
+        <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F; border-radius: 4px;
+                    padding: 4px 10px; margin: 3px; font-size: 10px; color: #C6A34F; display: inline-block;">The-Odds-API</span>
     </div>
     """, unsafe_allow_html=True)
 
     # Perplexity badge if enabled
     if PERPLEXITY_ENABLED:
         st.markdown("""
-        <div style="text-align: center; margin-bottom: 10px;">
-            <span style="background: #8B5CF620; border: 1px solid #8B5CF6; border-radius: 4px; padding: 2px 8px; font-size: 10px; color: #A78BFA;">+ Perplexity Search</span>
+        <div style="text-align: center; margin-bottom: 12px;">
+            <span style="background: rgba(139, 92, 246, 0.15); border: 1px solid #8B5CF6; border-radius: 4px;
+                        padding: 4px 10px; font-size: 10px; color: #A78BFA; display: inline-block;">+ Perplexity Search</span>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("""
-    <p style="color: #64748B; font-size: 11px; text-align: center;">
+    <p style="color: #8A867F; font-size: 11px; text-align: center;">
         Ludi Lite | Research Assistant | Not betting advice<br/>
-        <span style="font-size: 9px;">12 prop markets | 6 Tank01 endpoints | Live injuries & rosters</span>
+        <span style="font-size: 9px; color: #5A5752;">We reject "AI Slop" in favor of Human Verification</span>
     </p>
     """, unsafe_allow_html=True)
 

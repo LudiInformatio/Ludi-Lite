@@ -53,21 +53,23 @@ def clean_ai_response(response: str) -> str:
 
 
 def render_header():
-    """Render dashboard header"""
-    time_ctx = get_time_context()
-
-    st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #334155; margin-bottom: 20px;">
-        <div>
-            <h1 style="color: #FBBF24; margin: 0; font-size: 28px;">🏀 Ludi Lite</h1>
-            <p style="color: #94A3B8; margin: 5px 0 0 0; font-size: 14px;">AI Research Lab | {CURRENT_SEASON}</p>
+    """Render app header with Lo-Fi Premium styling."""
+    st.markdown("""
+    <div style="text-align: center; padding: 20px 0 30px 0;">
+        <div style="display: inline-flex; align-items: center; gap: 12px;">
+            <span style="font-size: 32px;">🏀</span>
+            <div>
+                <h1 style="color: #f5f3ed; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -1px;">
+                    Ludi Lite
+                </h1>
+                <p style="color: #C6A34F; margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+                    AI Sports Research Lab
+                </p>
+            </div>
         </div>
-        <div style="text-align: right;">
-            <span class="time-badge" style="background: {time_ctx['color']}20; color: {time_ctx['color']};">
-                {time_ctx['mode']}
-            </span>
-            <p style="color: #94A3B8; margin: 5px 0 0 0; font-size: 12px;">{time_ctx['timestamp']}</p>
-        </div>
+        <p style="color: #8A867F; font-size: 13px; margin-top: 12px; font-style: italic;">
+            "A Sanctuary from the Noise"
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -194,42 +196,106 @@ def render_chat_interface():
 
 
 def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False):
-    """Render analysis results side by side"""
-    # Clean responses before rendering
-    freestyle_cleaned = clean_ai_response(freestyle) if freestyle else ""
-    methodology_cleaned = clean_ai_response(methodology) if methodology else ""
+    """
+    Render analysis output with Lo-Fi Premium styling.
+    Brief, scannable format inspired by PropsMadness.
+    """
+    # Clean leaked instructions
+    freestyle = clean_ai_response(freestyle) if freestyle else ""
+    methodology = clean_ai_response(methodology) if methodology else ""
 
-    if show_both:
-        col1, col2 = st.columns(2)
-
-        # Freestyle header - show Perplexity badge if used
-        freestyle_subtitle = "Claude + Perplexity Search" if perplexity_used else "Claude AI"
-        freestyle_icon = "🤖🔍" if perplexity_used else "🤖"
-
-        with col1:
-            st.markdown(f"""
-            <div style="background: #60A5FA20; border: 2px solid #60A5FA; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-                <h3 style="color: #60A5FA; margin: 0;">{freestyle_icon} Freestyle</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">{freestyle_subtitle}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown(freestyle_cleaned)
-
-        with col2:
-            st.markdown("""
-            <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-                <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method</h3>
-                <p style="color: #94A3B8; margin: 0; font-size: 11px;">Claude + S.A.V.A.G.E. + Tank01</p>
-            </div>
-            """, unsafe_allow_html=True)
-            st.markdown(methodology_cleaned)
-    else:
+    if show_both and freestyle and methodology:
+        # Section header
         st.markdown("""
-        <div style="background: #10B98120; border: 2px solid #10B981; border-radius: 8px; padding: 5px 15px; margin-bottom: 10px;">
-            <h3 style="color: #10B981; margin: 0;">🎯 Ludi Method Analysis</h3>
+        <div style="text-align: center; margin-bottom: 20px;">
+            <span style="color: #8A867F; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+                Analysis Comparison
+            </span>
         </div>
         """, unsafe_allow_html=True)
-        st.markdown(methodology_cleaned)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # Freestyle Header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #2A3441 0%, #344152 100%);
+                        border: 2px solid #5B7C99; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <span style="font-size: 20px;">🔍</span>
+                    <div>
+                        <div style="color: #f5f3ed; font-weight: 600;">FREESTYLE</div>
+                        <div style="color: #5B7C99; font-size: 11px;">Raw AI Research</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Perplexity badge if used
+            if perplexity_used:
+                st.markdown("""
+                <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid #8B5CF6;
+                            border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; display: inline-block;">
+                    <span style="color: #A78BFA; font-size: 11px;">⚡ + Perplexity Real-Time</span>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown(freestyle)
+
+        with col2:
+            # S.A.V.A.G.E. Header
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #2A3D2E 0%, #344D3A 100%);
+                        border: 2px solid #4A7C59; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <span style="font-size: 20px;">🎯</span>
+                    <div>
+                        <div style="color: #f5f3ed; font-weight: 600;">S.A.V.A.G.E.</div>
+                        <div style="color: #4A7C59; font-size: 11px;">Ludi Methodology</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Methodology badges
+            st.markdown("""
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Usage Vacuum</span>
+                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Archetype</span>
+                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Pace</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown(methodology)
+
+        # Comparison legend
+        st.markdown("""
+        <div style="background: #2D2A26; border-radius: 8px; padding: 12px; margin-top: 16px;">
+            <div style="color: #8A867F; font-size: 11px; text-align: center;">
+                <strong style="color: #5B7C99;">Freestyle</strong> = General AI research |
+                <strong style="color: #4A7C59;">S.A.V.A.G.E.</strong> = Usage Vacuum • Archetype vs Scheme • Pace • Blowout Tax • B2B Fatigue
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif methodology:
+        # Single panel (Ludi Method only)
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #2A3D2E 0%, #344D3A 100%);
+                    border: 2px solid #4A7C59; border-radius: 12px; padding: 20px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                <span style="font-size: 24px;">🎯</span>
+                <div>
+                    <div style="color: #f5f3ed; font-weight: 600; font-size: 18px;">S.A.V.A.G.E. Analysis</div>
+                    <div style="color: #4A7C59; font-size: 12px;">Ludi Methodology Applied</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown(methodology)
 
 
 def render_manual_input():
@@ -292,3 +358,60 @@ def render_manual_input():
                 }
 
     return None, None
+
+
+def render_prop_analysis_card(player: str, stat: str, line: float, analysis: dict) -> None:
+    """
+    Render a PropsMadness-style prop analysis card.
+
+    Args:
+        player: Player name
+        stat: Stat type (PTS, AST, REB, etc.)
+        line: The betting line
+        analysis: Dict with hit_rate, l15_avg, h2h_record, defense_rank, verdict
+    """
+    st.markdown(f"""
+    <div style="background: #2D2A26; border-radius: 12px; padding: 20px; border: 1px solid #8A867F;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+                <h3 style="color: #f5f3ed; margin: 0;">{player}</h3>
+                <span style="color: #8A867F; font-size: 12px;">{stat} | Line: {line}</span>
+            </div>
+            <div class="time-badge">{analysis.get('verdict', 'LEAN OVER')}</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+            <div class="stat-card">
+                <div class="label">L15 Avg</div>
+                <div class="value">{analysis.get('l15_avg', 'N/A')}</div>
+                <div class="subtext">{analysis.get('l15_min', 'N/A')} min</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Hit Rate</div>
+                <div class="value">{analysis.get('hit_rate', 'N/A')}</div>
+                <div class="subtext">{analysis.get('hit_games', '0')}/15 games</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">vs Opp</div>
+                <div class="value">{analysis.get('h2h_rate', 'N/A')}</div>
+                <div class="subtext">{analysis.get('h2h_games', '0')} games</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Def Rank</div>
+                <div class="value">#{analysis.get('defense_rank', 'N/A')}</div>
+                <div class="subtext">vs {stat}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_hit_rate_dots(hits: int, total: int = 15) -> str:
+    """Generate HTML for hit rate dot visualization."""
+    dots = ""
+    for i in range(total):
+        if i < hits:
+            dots += '<span class="dot active"></span>'
+        else:
+            dots += '<span class="dot"></span>'
+    return f'<div class="hit-rate">{dots}</div>'
