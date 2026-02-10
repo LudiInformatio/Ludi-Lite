@@ -18,11 +18,13 @@ def get_icon(name: str, color: str = "#383531", size: int = 24) -> str:
         # Brand Logo (Shield/Book Concept - Base64 PNG)
         "logo_main": f'<img src="data:image/png;base64,{logo_main_b64}" width="{size}" height="{size}" style="vertical-align: middle;">',
         
-        # Methodology / Analysis (The Algorithmic Eye - Base64 PNG)
-        "methodology": f'<img src="data:image/png;base64,{methodology_b64}" width="{size}" height="{size}" style="vertical-align: middle;">',
+        # Methodology / Analysis (Architectural Grid - Clean SVG)
+        # Represents structure, standards, and rigorous measurement.
+        "methodology": f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="{color}" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke="{color}" stroke-width="2"/><path d="M12 3V21" stroke="{color}" stroke-width="1.5"/><path d="M3 12H21" stroke="{color}" stroke-width="1.5"/></svg>',
         
-        # Freestyle / AI Research (The Quantum Spark - Base64 PNG)
-        "freestyle": f'<img src="data:image/png;base64,{freestyle_b64}" width="{size}" height="{size}" style="vertical-align: middle;">',
+        # Freestyle / AI Research (The Abstract Spark - Clean SVG)
+        # Represents flash of insight, AI fluidity, and creativity.
+        "freestyle": f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2" fill="{color}"/></svg>',
         
         # Time / Schedule (Minimal Clock - SVG)
         "time": f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="{color}" stroke-width="2"/><path d="M12 7V12L15 15" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
