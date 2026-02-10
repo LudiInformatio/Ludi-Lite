@@ -2,8 +2,11 @@ name: Injury Data Verification
 
 on:
   schedule:
-    # Run at 11 AM EST (16:00 UTC), 3 PM EST (20:00 UTC), 6 PM EST (23:00 UTC)
-    - cron: '0 16,20,23 * * *'
+    # Optimized for game day injury reports (aligned with official NBA 15-min rolling updates)
+    # Run at 11 AM EST (16:00 UTC), 12 PM EST (17:00 UTC), 5 PM EST (22:00 UTC), 7 PM EST (00:00 UTC next day)
+    # Morning report → Early afternoon → Pre-primetime → Final check before main slate
+    - cron: '0 16,17,22 * * *'  # 11 AM, 12 PM, 5 PM EST
+    - cron: '0 0 * * *'          # 7 PM EST (00:00 UTC next day)
   workflow_dispatch:  # Allow manual triggering
 
 jobs:

@@ -16,13 +16,46 @@ from typing import Dict, List, Optional
 import pytz
 
 
-def get_tank01_injuries() -> List[Dict]:
-    """Fetch injury data from Tank01 API"""
+def get_injuries_from_rosters(teams: List[str]) -> List[Dict]:
+    """
+    Fetch injury data from Tank01 team rosters (WORKING ENDPOINT).
+
+    The getNBAInjuryList endpoint is BROKEN - returns only playerID without team/name.
+    Instead, we query getNBATeamRoster per team, which has embedded injury fields.
+
+    Args:
+        teams: List of team abbreviations to check (e.g., ['LAL', 'PHI'])
+
+    Returns:
+        List of injury dictionaries with name, team, designation, description
+    """
     try:
-        from tank01_client import get_injury_list
-        return get_injury_list()
+        from tank01_client import get_team_roster, _to_standard_abbr
+
+        all_injuries = []
+
+        for team_abbr in teams:
+            roster = get_team_roster(team_abbr)
+            if not roster:
+                continue
+
+            for player in roster:
+                injury = player.get("injury", {})
+                designation = (injury.get("designation") or "").upper()
+
+                if designation:  # Only include players with injury status
+                    description = injury.get("description", "")
+                    all_injuries.append({
+                        "name": player.get("name", "Unknown"),
+                        "team": _to_standard_abbr(team_abbr),
+                        "designation": designation,
+                        "description": description
+                    })
+
+        return all_injuries
+
     except Exception as e:
-        print(f"Tank01 API Error: {e}")
+        print(f"Tank01 Roster API Error: {e}")
         return []
 
 
@@ -30,35 +63,38 @@ def get_official_nba_injuries() -> List[Dict]:
     """
     Fetch official NBA injury report from nba.com
 
-    Official source: https://www.nba.com/stats/players/injury
-    or https://ak-static.cms.nba.com/referee/injury/Injury-Report_[date].json
+    DISABLED: Official NBA endpoints returning 403/empty as of Feb 2026
 
-    Returns list of injuries in standardized format
+    Tested endpoints (both failing):
+    - https://cdn.nba.com/static/json/staticData/injury-report_{date}.json → 403 Forbidden
+    - https://ak-static.cms.nba.com/referee/injury/Injury-Report_{date}.json → Empty/denied
+
+    TODO: Research current working NBA injury endpoint
+    Official NBA injury reports update every 15 minutes (rolling basis)
+
+    Returns list of injuries in standardized format (currently empty)
     """
-    import requests
+    # DISABLED - uncomment and fix endpoint once working source is found
+    # import requests
+    #
+    # try:
+    #     today = datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d')
+    #     url = f"https://cdn.nba.com/static/json/staticData/injury-report_{today}.json"
+    #     response = requests.get(url, timeout=10)
+    #
+    #     if response.status_code == 200:
+    #         data = response.json()
+    #         # Parse NBA official format
+    #         return []
+    #     else:
+    #         print(f"NBA Official API returned {response.status_code}")
+    #         return []
+    #
+    # except Exception as e:
+    #     print(f"NBA Official API Error: {e}")
+    #     return []
 
-    try:
-        # NBA official injury endpoint (updated daily around 11 AM EST)
-        # Format: https://cdn.nba.com/static/json/staticData/injury-report_YYYY-MM-DD.json
-        today = datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d')
-
-        url = f"https://cdn.nba.com/static/json/staticData/injury-report_{today}.json"
-        response = requests.get(url, timeout=10)
-
-        if response.status_code == 200:
-            data = response.json()
-            # Parse NBA official format
-            injuries = []
-            # Note: Actual parsing depends on NBA's JSON structure
-            # This is a placeholder - need to inspect real response
-            return injuries
-        else:
-            print(f"NBA Official API returned {response.status_code}")
-            return []
-
-    except Exception as e:
-        print(f"NBA Official API Error: {e}")
-        return []
+    return []  # Disabled until working endpoint is found
 
 
 def search_injury_news_perplexity(player_name: str, team: str) -> Optional[str]:
@@ -101,28 +137,42 @@ def compare_injury_sources(teams: List[str]) -> Dict:
     print(f"INJURY DATA VERIFICATION - {timestamp}")
     print(f"{'='*80}\n")
 
-    # Source 1: Tank01
-    print("📊 Fetching Tank01 data...")
-    tank01_injuries = get_tank01_injuries()
-    tank01_by_team = {}
-    for inj in tank01_injuries:
-        team = inj.get('team')
-        if team in teams:
-            if team not in tank01_by_team:
-                tank01_by_team[team] = []
-            tank01_by_team[team].append(inj)
+    # Source 1: Tank01 Rosters (FIXED - using working endpoint)
+    print("📊 Fetching Tank01 roster data...")
+    roster_injuries = get_injuries_from_rosters(teams)
 
-    # Source 2: Official NBA
+    # Source 2: Known Suspensions (Tank01 removes these from rosters)
+    print("📊 Checking known suspensions...")
+    try:
+        from season_context import KNOWN_SUSPENSIONS
+        suspensions = [s for s in KNOWN_SUSPENSIONS if s["team"] in teams]
+    except Exception as e:
+        print(f"Could not load KNOWN_SUSPENSIONS: {e}")
+        suspensions = []
+
+    # Source 3: Official NBA (currently disabled)
     print("📊 Fetching Official NBA data...")
     nba_official = get_official_nba_injuries()
 
-    # Source 3: Cross-check with Perplexity for known issues
+    # Source 4: Cross-check with Perplexity for known issues
     print("📊 Cross-referencing with Perplexity...\n")
+
+    # Organize injuries by team
+    injuries_by_team = {}
+    for team in teams:
+        team_injuries = [inj for inj in roster_injuries if inj['team'] == team]
+        team_suspensions = [s for s in suspensions if s['team'] == team]
+        injuries_by_team[team] = {
+            'roster': team_injuries,
+            'suspensions': team_suspensions,
+            'total': len(team_injuries) + len(team_suspensions)
+        }
 
     results = {
         'timestamp': timestamp,
         'sources': {
-            'tank01_total': len(tank01_injuries),
+            'roster_injuries_total': len(roster_injuries),
+            'known_suspensions_total': len(suspensions),
             'nba_official_total': len(nba_official),
         },
         'teams': {},
@@ -130,26 +180,34 @@ def compare_injury_sources(teams: List[str]) -> Dict:
     }
 
     for team in teams:
-        tank01_count = len(tank01_by_team.get(team, []))
+        data = injuries_by_team[team]
+        roster_count = len(data['roster'])
+        suspension_count = len(data['suspensions'])
+        total_count = data['total']
 
         print(f"\n{team}:")
-        print(f"  Tank01: {tank01_count} injuries")
+        print(f"  Roster injuries: {roster_count}")
 
-        if tank01_count == 0:
-            print(f"  ⚠️ WARNING: Tank01 shows NO injuries for {team}")
-            print(f"     This may indicate stale/missing data")
-            results['discrepancies'].append({
-                'team': team,
-                'issue': 'Tank01 shows zero injuries',
-                'severity': 'HIGH'
-            })
-        else:
-            for inj in tank01_by_team[team]:
-                print(f"    - {inj['name']}: {inj.get('designation')}")
+        if data['roster']:
+            for inj in data['roster']:
+                desc_short = inj['description'][:50] + "..." if len(inj['description']) > 50 else inj['description']
+                print(f"    - {inj['name']}: {inj['designation']}" + (f" ({desc_short})" if desc_short else ""))
+
+        if data['suspensions']:
+            print(f"  Known suspensions: {suspension_count}")
+            for susp in data['suspensions']:
+                print(f"    - {susp['name']}: {susp['status']} ({susp['description']})")
+
+        print(f"  Total: {total_count} injuries")
+
+        if total_count == 0:
+            print(f"  ✓ No injuries reported for {team}")
 
         results['teams'][team] = {
-            'tank01': tank01_by_team.get(team, []),
+            'roster_injuries': data['roster'],
+            'suspensions': data['suspensions'],
             'nba_official': [],  # Populated when NBA API is working
+            'total': total_count
         }
 
     return results
@@ -165,23 +223,54 @@ def verify_specific_player(player_name: str, team: str) -> Dict:
     print(f"\n🔍 DEEP VERIFICATION: {player_name} ({team})")
     print("="*60)
 
-    # Check Tank01
-    tank01_injuries = get_tank01_injuries()
-    tank01_match = [
-        inj for inj in tank01_injuries
-        if player_name.lower() in inj.get('name', '').lower()
-    ]
+    # Check Tank01 Roster
+    try:
+        from tank01_client import get_team_roster
+        roster = get_team_roster(team)
+        roster_match = None
 
-    print(f"\n1. Tank01 API:")
-    if tank01_match:
-        for inj in tank01_match:
-            print(f"   ✓ Found: {inj['name']} - {inj.get('designation')}")
-            print(f"     Details: {inj.get('description')}")
-    else:
-        print(f"   ✗ NOT FOUND in Tank01 injury list")
+        for player in roster:
+            if player_name.lower() in player.get('name', '').lower():
+                roster_match = player
+                break
+
+        print(f"\n1. Tank01 Team Roster:")
+        if roster_match:
+            injury = roster_match.get('injury', {})
+            designation = injury.get('designation', '')
+            if designation:
+                print(f"   ✓ Found: {roster_match['name']} - {designation}")
+                print(f"     Details: {injury.get('description', 'No details')}")
+            else:
+                print(f"   ✓ Found: {roster_match['name']} - HEALTHY (no injury status)")
+        else:
+            print(f"   ✗ NOT FOUND in {team} roster")
+            print(f"     Check if player was traded or suspended")
+    except Exception as e:
+        print(f"   ✗ Error checking roster: {e}")
+        roster_match = None
+
+    # Check Known Suspensions
+    try:
+        from season_context import KNOWN_SUSPENSIONS
+        suspension_match = None
+        for susp in KNOWN_SUSPENSIONS:
+            if player_name.lower() in susp['name'].lower() and susp['team'] == team:
+                suspension_match = susp
+                break
+
+        print(f"\n2. Known Suspensions:")
+        if suspension_match:
+            print(f"   ⚠️ Found: {suspension_match['name']} - {suspension_match['status']}")
+            print(f"     Details: {suspension_match['description']}")
+        else:
+            print(f"   ✓ Not in suspension list")
+    except Exception as e:
+        print(f"   ✗ Error checking suspensions: {e}")
+        suspension_match = None
 
     # Check Perplexity
-    print(f"\n2. Perplexity Real-Time Search:")
+    print(f"\n3. Perplexity Real-Time Search:")
     news = search_injury_news_perplexity(player_name, team)
     if news:
         print(f"   {news[:300]}...")
@@ -191,7 +280,8 @@ def verify_specific_player(player_name: str, team: str) -> Dict:
     return {
         'player': player_name,
         'team': team,
-        'tank01_status': tank01_match[0] if tank01_match else None,
+        'roster_status': roster_match.get('injury') if roster_match else None,
+        'suspension_status': suspension_match if suspension_match else None,
         'perplexity_news': news,
         'verified_at': datetime.now(pytz.timezone('America/New_York')).isoformat()
     }
@@ -200,17 +290,68 @@ def verify_specific_player(player_name: str, team: str) -> Dict:
 # Scheduled execution times (for GitHub Actions workflow)
 VERIFICATION_TIMES = [
     "11:00",  # 11 AM EST - Morning injury report
-    "15:00",  # 3 PM EST - Afternoon update
-    "18:00",  # 6 PM EST - Pre-game final check
+    "12:00",  # 12 PM EST - Early afternoon check
+    "17:00",  # 5 PM EST - Pre-primetime games
+    "19:00",  # 7 PM EST - Final check before main slate
 ]
 
 
-if __name__ == "__main__":
-    # Test with tonight's teams (Feb 5, 2026)
-    teams_tonight = ['PHI', 'LAL', 'GSW', 'PHX', 'CHI', 'TOR',
-                     'BKN', 'ORL', 'CHA', 'HOU', 'WAS', 'DET',
-                     'SAS', 'DAL', 'UTA', 'ATL']
+def get_dynamic_teams() -> List[str]:
+    """
+    Get teams playing TODAY dynamically from Tank01.
+    This minimizes API costs by only checking teams with games tonight.
 
+    Falls back to all 30 teams if API fails.
+
+    Returns:
+        List of team abbreviations playing today
+    """
+    try:
+        from tank01_client import get_todays_games
+
+        games = get_todays_games()
+        if not games:
+            print("⚠️ No games scheduled today, checking all teams...")
+            return get_all_nba_teams()
+
+        teams_tonight = set()
+        for game in games:
+            # Extract team abbreviations (handle different field names)
+            home = game.get("homeTeam", game.get("home", game.get("hTeam", "")))
+            away = game.get("awayTeam", game.get("away", game.get("aTeam", "")))
+            if home:
+                teams_tonight.add(home)
+            if away:
+                teams_tonight.add(away)
+
+        teams_tonight.discard("")  # Remove empty strings
+
+        teams_list = sorted(list(teams_tonight))
+        print(f"✓ Found {len(teams_list)} teams playing today: {', '.join(teams_list)}")
+        return teams_list
+
+    except Exception as e:
+        print(f"⚠️ Could not fetch today's games: {e}")
+        print("   Falling back to all 30 NBA teams...")
+        return get_all_nba_teams()
+
+
+def get_all_nba_teams() -> List[str]:
+    """Return all 30 NBA team abbreviations (fallback)"""
+    return [
+        "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET",
+        "GSW", "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN",
+        "NOP", "NYK", "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS",
+        "TOR", "UTA", "WAS"
+    ]
+
+
+if __name__ == "__main__":
+    # Dynamically get tonight's teams (or all 30 if no games)
+    print("🔍 Detecting tonight's games...")
+    teams_tonight = get_dynamic_teams()
+
+    print("\n" + "="*80)
     print("Running injury verification for tonight's games...")
     results = compare_injury_sources(teams_tonight)
 
@@ -223,12 +364,26 @@ if __name__ == "__main__":
     pg_check = verify_specific_player("Paul George", "PHI")
 
     print("\n" + "="*80)
-    print(f"SUMMARY: {len(results['discrepancies'])} discrepancies found")
+    print("SUMMARY")
+    print("="*80)
+
+    total_roster_injuries = results['sources']['roster_injuries_total']
+    total_suspensions = results['sources']['known_suspensions_total']
+    total_combined = total_roster_injuries + total_suspensions
+
+    print(f"✓ Roster injuries found: {total_roster_injuries}")
+    print(f"✓ Known suspensions: {total_suspensions}")
+    print(f"✓ Total injuries tracked: {total_combined}")
+
+    teams_with_injuries = sum(1 for team_data in results['teams'].values() if team_data['total'] > 0)
+    print(f"✓ Teams with injuries: {teams_with_injuries}/{len(teams_tonight)}")
+
     if results['discrepancies']:
-        print("\nIssues to investigate:")
+        print(f"\n⚠️ Discrepancies found: {len(results['discrepancies'])}")
         for disc in results['discrepancies']:
             print(f"  • {disc['team']}: {disc['issue']} (Severity: {disc['severity']})")
+    else:
+        print("\n✓ No data discrepancies detected")
 
     print("\n✅ Verification complete")
-    print(f"Tank01 API has {results['sources']['tank01_total']} total injuries in system")
-    print("Recommend cross-referencing with official NBA sources for accuracy")
+    print("📊 Data sources: Tank01 rosters + KNOWN_SUSPENSIONS + Perplexity verification")

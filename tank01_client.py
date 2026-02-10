@@ -109,26 +109,39 @@ def get_team_roster(team_abbr: str, include_stats: bool = False) -> List[Dict[st
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_injury_list() -> List[Dict[str, Any]]:
     """
-    Get current NBA injury list.
+    DEPRECATED: This endpoint returns INCOMPLETE data (playerID only, no team/name).
+
+    The getNBAInjuryList endpoint is BROKEN - returns only playerID without team/name fields.
+    All injury data should be retrieved via get_team_roster() instead, which includes
+    embedded injury fields with complete player information.
+
+    DO NOT USE THIS FUNCTION. Use get_team_roster() for injury data.
+
+    Original endpoint: getNBAInjuryList
+    Working alternative: getNBATeamRoster (per team, has injury data)
 
     Returns:
-        List of injury dictionaries with player name, team, status, description
+        Empty list (function disabled)
     """
-    data = _make_request("getNBAInjuryList")
-    if not data or "body" not in data:
-        return []
+    # DISABLED - Returns incomplete data
+    # data = _make_request("getNBAInjuryList")
+    # if not data or "body" not in data:
+    #     return []
+    #
+    # injuries = data["body"]
+    # return [
+    #     {
+    #         "name": inj.get("longName", inj.get("playerName", "Unknown")),
+    #         "team": inj.get("team", ""),
+    #         "designation": inj.get("designation", ""),
+    #         "description": inj.get("injDesc", inj.get("description", "")),
+    #         "return_date": inj.get("injReturnDate", "")
+    #     }
+    #     for inj in injuries
+    # ]
 
-    injuries = data["body"]
-    return [
-        {
-            "name": inj.get("longName", inj.get("playerName", "Unknown")),
-            "team": inj.get("team", ""),
-            "designation": inj.get("designation", ""),
-            "description": inj.get("injDesc", inj.get("description", "")),
-            "return_date": inj.get("injReturnDate", "")
-        }
-        for inj in injuries
-    ]
+    print("⚠️ WARNING: get_injury_list() is DEPRECATED. Use get_team_roster() for injury data.")
+    return []
 
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -230,7 +243,7 @@ def find_player_team(player_name: str, search_teams: list = None) -> Optional[st
 
 def get_team_injuries(team_abbr: str) -> List[Dict[str, Any]]:
     """
-    Get injuries for a specific team.
+    Get injuries for a specific team from roster data.
 
     Args:
         team_abbr: Team abbreviation
@@ -238,8 +251,22 @@ def get_team_injuries(team_abbr: str) -> List[Dict[str, Any]]:
     Returns:
         List of injuries for that team
     """
-    all_injuries = get_injury_list()
-    return [inj for inj in all_injuries if inj["team"].upper() == team_abbr.upper()]
+    roster = get_team_roster(team_abbr)
+    injuries = []
+
+    for player in roster:
+        injury = player.get("injury", {})
+        designation = injury.get("designation")
+
+        if designation:  # Only include players with injury status
+            injuries.append({
+                "name": player.get("name", "Unknown"),
+                "team": _to_standard_abbr(team_abbr),
+                "designation": designation,
+                "description": injury.get("description", "")
+            })
+
+    return injuries
 
 
 def format_roster_context(team_abbr: str) -> str:

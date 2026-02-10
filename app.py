@@ -59,148 +59,131 @@ st.set_page_config(
 # Custom CSS - Lo-Fi Premium Palette
 st.markdown("""
 <style>
-    /* Lo-Fi Premium Color Palette */
+    /* -------------------------------------------------------------------------
+       LO-FI PREMIUM "SANCTUARY" THEME
+       ------------------------------------------------------------------------- */
+       
+    /* 1. TYPOGRAPHY (Google Fonts) */
+    @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+
+    /* 2. THEME VARIABLES */
     :root {
+        /* Palette */
+        --paper: #f5f3ed;
+        --cream: #FAF8F5;
         --charcoal: #383531;
         --amber: #C6A34F;
         --stone: #8A867F;
-        --paper: #f5f3ed;
-        --cream: #FAF8F5;
-        --dark-navy: #0F172A;
+        --stone-light: #D4CFC5;
         --success: #4A7C59;
-        --info: #5B7C99;
+        
+        /* Typography */
+        --font-heading: 'Libre Baskerville', serif;
+        --font-body: 'Inter', sans-serif;
     }
 
-    /* Light theme with warm undertones - Lo-Fi Premium */
+    /* 3. GLOBAL RESET & BASE STYLES */
     .stApp {
         background-color: var(--paper);
+        color: var(--charcoal);
+        font-family: var(--font-body);
+    }
+    
+    h1, h2, h3, h4, .big-font {
+        font-family: var(--font-heading) !important;
+        color: var(--charcoal) !important;
+    }
+    
+    p, div, label, span {
+        font-family: var(--font-body);
+        color: var(--charcoal);
     }
 
-    /* Game card styling - Lo-Fi Premium Light Mode */
-    .game-card {
-        background: linear-gradient(135deg, #FFFFFF 0%, var(--cream) 100%);
+    /* 4. COMPONENT HACKS (Streamlit Overrides) */
+    
+    /* Game Cards (Transforming standard Buttons into Cards) */
+    /* Target: div.row-widget.stButton > button */
+    div.row-widget.stButton > button {
+        background-color: var(--cream);
+        border: 1px solid var(--stone-light);
         border-radius: 12px;
-        padding: 15px;
-        margin: 8px 0;
-        border: 1.5px solid #D4CFC5;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        box-shadow: 0 2px 4px rgba(56, 53, 49, 0.08);
+        padding: 16px 24px;
+        text-align: left;
+        box-shadow: 0 4px 6px -1px rgba(56, 53, 49, 0.05); /* Subtle shadow */
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        height: auto;
+        min-height: 80px;
     }
-    .game-card:hover {
+    
+    div.row-widget.stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(198, 163, 79, 0.25);
+        box-shadow: 0 10px 15px -3px rgba(198, 163, 79, 0.15); /* Amber glow */
         border-color: var(--amber);
-    }
-    .game-card h3 {
         color: var(--charcoal);
-        margin: 0 0 8px 0;
-        font-size: 18px;
     }
-    .game-card .line {
-        color: #A0873D;
-        font-weight: bold;
-        font-size: 14px;
-    }
-    .game-card .time {
-        color: #6B6760;
-        font-size: 12px;
+    
+    div.row-widget.stButton > button:active, 
+    div.row-widget.stButton > button:focus {
+        border-color: var(--amber);
+        color: var(--charcoal);
+        background-color: #fff;
     }
 
-    /* Analysis panels - Light mode with colored borders */
-    .freestyle-panel {
-        background: linear-gradient(135deg, #F8FAFB 0%, #EDF2F7 100%);
-        border: 2px solid #7B94AB;
-        border-radius: 12px;
-        padding: 20px;
-    }
-    .method-panel {
-        background: linear-gradient(135deg, #F6FAF7 0%, #E8F4ED 100%);
-        border: 2px solid #6B9876;
-        border-radius: 12px;
-        padding: 20px;
-    }
-
-    /* PropsMadness-style stat cards - Light mode */
-    .stat-card {
-        background: #FFFFFF;
-        border: 1px solid #D4CFC5;
+    /* Inputs (Text Input, Number Input) */
+    .stTextInput input, .stNumberInput input, .stSelectbox select {
+        background-color: #fff;
+        border: 1px solid var(--stone-light);
         border-radius: 8px;
-        padding: 12px;
-        text-align: center;
-        box-shadow: 0 1px 3px rgba(56, 53, 49, 0.08);
+        color: var(--charcoal);
+        font-family: var(--font-body);
     }
-    .stat-card .label {
-        color: #6B6760;
+    
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: var(--amber);
+        box-shadow: 0 0 0 1px var(--amber);
+    }
+
+    /* Analysis Panels (Custom Containers) */
+    .sanctuary-panel {
+        background: linear-gradient(180deg, #FFFFFF 0%, var(--cream) 100%);
+        border: 1px solid var(--stone-light);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    
+    .panel-header {
+        font-family: var(--font-heading);
+        font-size: 18px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* Badges & Tags */
+    .badge-amber {
+        background-color: rgba(198, 163, 79, 0.15);
+        color: #8E7022;
+        padding: 4px 8px;
+        border-radius: 4px;
         font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    .stat-card .value {
-        color: var(--charcoal);
-        font-size: 24px;
-        font-weight: bold;
-    }
-    .stat-card .subtext {
-        color: #A0873D;
-        font-size: 12px;
-    }
-
-    /* Hit rate indicator - Light mode */
-    .hit-rate {
-        display: inline-flex;
-        gap: 3px;
-    }
-    .hit-rate .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #D4CFC5;
-    }
-    .hit-rate .dot.active {
-        background: #A0873D;
-    }
-
-    /* Time badge - Light mode */
-    .time-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: bold;
-        background: rgba(160, 135, 61, 0.12);
-        color: #806A2F;
-        border: 1px solid #C6A34F;
-    }
-
-    /* Section headers - Light mode */
-    .section-header {
-        color: var(--charcoal);
-        font-size: 14px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 2px;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #D4CFC5;
+        letter-spacing: 0.5px;
     }
 
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-        .game-card {
-            padding: 12px;
-        }
-        .game-card h3 {
-            font-size: 16px;
-        }
-        .stat-card .value {
-            font-size: 20px;
-        }
-    }
+    /* Utility Helpers */
+    .text-stone { color: var(--stone) !important; }
+    .text-sm { font-size: 13px !important; }
+    .uppercase { text-transform: uppercase; letter-spacing: 1px; }
 
-    /* Hide Streamlit branding */
+    /* Hide Default UI Gunk */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
 </style>
 """, unsafe_allow_html=True)
 
