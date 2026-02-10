@@ -43,6 +43,7 @@ from team_mapping import normalize_team, get_full_name
 # Extracted modules
 from database import init_db, save_analysis
 from time_utils import get_time_context, build_time_aware_prompt, ET
+import ui_icons
 from ui_components import render_header, render_game_cards, render_chat_interface, render_analysis_output
 
 # =============================================================================
@@ -51,7 +52,7 @@ from ui_components import render_header, render_game_cards, render_chat_interfac
 
 st.set_page_config(
     page_title="Ludi Lite",
-    page_icon="🏀",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="collapsed"  # Better for mobile
 )
@@ -85,6 +86,12 @@ st.markdown("""
     /* 3. GLOBAL RESET & BASE STYLES */
     .stApp {
         background-color: var(--paper);
+        background-image: 
+            radial-gradient(var(--stone-light) 1px, transparent 1px),
+            radial-gradient(var(--stone-light) 1px, transparent 1px);
+        background-size: 20px 20px;
+        background-position: 0 0, 10px 10px;
+        background-attachment: fixed;
         color: var(--charcoal);
         font-family: var(--font-body);
     }
@@ -99,7 +106,101 @@ st.markdown("""
         color: var(--charcoal);
     }
 
-    /* 4. COMPONENT HACKS (Streamlit Overrides) */
+    /* 4. ANIMATIONS */
+    @keyframes fade-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .fade-in {
+        animation: fade-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    /* 5. HERO SECTION */
+    .hero-container {
+        text-align: center;
+        padding: 80px 20px 60px;
+        background: radial-gradient(circle at center, rgba(255,255,255,0.8) 0%, rgba(245,243,237,0) 70%);
+        margin-bottom: 40px;
+    }
+    
+    .hero-title {
+        font-family: var(--font-heading);
+        font-size: 56px;
+        font-weight: 700;
+        letter-spacing: -2px;
+        line-height: 1.1;
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, var(--charcoal) 0%, #5a5650 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    .hero-subtitle {
+        font-family: var(--font-body);
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        color: var(--amber);
+        font-weight: 600;
+        margin-bottom: 32px;
+    }
+
+    .cta-button {
+        display: inline-block;
+        padding: 12px 32px;
+        background-color: var(--charcoal);
+        color: var(--paper) !important;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 14px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(56, 53, 49, 0.15);
+    }
+    
+    .cta-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(56, 53, 49, 0.25);
+        background-color: #2a2825;
+    }
+
+    /* 6. GLASS NAVBAR */
+    .glass-nav {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 999;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 50px;
+        padding: 8px 24px;
+        display: flex;
+        gap: 24px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+        width: auto;
+        max-width: 90%;
+    }
+    
+    .nav-item {
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--charcoal);
+        text-decoration: none;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+        cursor: pointer;
+    }
+    
+    .nav-item:hover {
+        opacity: 1;
+    }
+
+    /* 7. COMPONENT HACKS (Streamlit Overrides) */
     
     /* Game Cards (Transforming standard Buttons into Cards) */
     /* Target: div.row-widget.stButton > button */
@@ -136,6 +237,8 @@ st.markdown("""
         border-radius: 8px;
         color: var(--charcoal);
         font-family: var(--font-body);
+        box-shadow: none;
+        padding: 10px 14px;
     }
     
     .stTextInput input:focus, .stNumberInput input:focus {
@@ -151,6 +254,7 @@ st.markdown("""
         padding: 24px;
         margin-bottom: 24px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        animation: fade-in 0.5s ease-out;
     }
     
     .panel-header {
@@ -190,12 +294,60 @@ st.markdown("""
 # Initialize database at module level
 init_db()
 
+def render_sidebar():
+    with st.sidebar:
+        st.header("⚙️ Settings")
+        
+        with st.expander("Live Odds Ticker", expanded=True):
+            st.info("Configure your The-Odds-API widget here.")
+            
+            # Widget HTML Input
+            widget_html = st.text_area(
+                "Paste Widget HTML Code",
+                height=150,
+                placeholder="<script>...</script>",
+                help="Get your widget from the-odds-api.com"
+            )
+            
+            if widget_html:
+                st.markdown("### Preview")
+                st.components.v1.html(widget_html, height=400, scrolling=True)
+
+
 # =============================================================================
 # Main App
 # =============================================================================
 
 def main():
-    render_header()
+    render_sidebar()
+    
+    # 1. Glass Navbar
+    st.markdown("""
+    <div class="glass-nav fade-in">
+        <a class="nav-item">🏠 HOME</a>
+        <a class="nav-item">📊 ODDS</a>
+        <a class="nav-item">🧪 LAB</a>
+        <a class="nav-item">🧠 ASK LUDI</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 2. Hero Section
+    logo_svg = ui_icons.get_icon("logo_main", size=64, color="#383531")
+    st.markdown(f"""
+    <div class="hero-container fade-in">
+        <div style="margin-bottom: 24px;">
+            {logo_svg}
+        </div>
+        <div class="hero-title">
+            Sanctuary from<br>the Noise.
+        </div>
+        <div class="hero-subtitle">
+            AI-POWERED SPORTS INTELLIGENCE
+        </div>
+        <a href="#" class="cta-button">ENTER THE LAB</a>
+    </div>
+    """, unsafe_allow_html=True)
+
 
     time_ctx = get_time_context()
 
@@ -402,11 +554,11 @@ QUERY: {query}
                         perplexity_used = True
 
         if analyze_both or selected_game:
-            spinner_text = "🤖🔍 Running Freestyle + Perplexity..." if perplexity_used else "🤖 Running Freestyle analysis..."
+            spinner_text = "Running Freestyle + Perplexity..." if perplexity_used else "Running Freestyle analysis..."
             with st.spinner(spinner_text):
                 freestyle = get_claude_analysis(prompt_freestyle, freestyle_input, model)
 
-            with st.spinner("🎯 Running Ludi Method analysis..."):
+            with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
             render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used)
@@ -417,7 +569,7 @@ QUERY: {query}
                 st.success("Saved!")
 
         elif analyze_ludi:
-            with st.spinner("🎯 Running Ludi Method analysis..."):
+            with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
             render_analysis_output("", methodology, show_both=False)

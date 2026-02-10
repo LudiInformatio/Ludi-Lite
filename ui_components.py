@@ -210,7 +210,7 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
             # FREESTYLE PANEL
             icon = ui_icons.get_icon("freestyle", color="#5B7089")
             st.markdown(textwrap.dedent(f"""
-            <div class="sanctuary-panel" style="border-top: 3px solid #7B94AB;">
+            <div class="sanctuary-panel fade-in" style="border-top: 3px solid #7B94AB;">
                 <div class="panel-header">
                     {icon}
                     <span style="color: #383531;">Freestyle</span>
@@ -228,7 +228,7 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
             # METHODOLOGY PANEL
             icon = ui_icons.get_icon("methodology", color="#4A7C59")
             st.markdown(textwrap.dedent(f"""
-            <div class="sanctuary-panel" style="border-top: 3px solid #4A7C59;">
+            <div class="sanctuary-panel fade-in" style="border-top: 3px solid #4A7C59;">
                 <div class="panel-header">
                     {icon}
                     <span style="color: #383531;">S.A.V.A.G.E.</span>
@@ -252,7 +252,7 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
         # SINGLE PANEL
         icon = ui_icons.get_icon("methodology", color="#4A7C59")
         st.markdown(textwrap.dedent(f"""
-        <div class="sanctuary-panel" style="border-top: 3px solid #4A7C59;">
+        <div class="sanctuary-panel fade-in" style="border-top: 3px solid #4A7C59;">
             <div class="panel-header">
                 {icon}
                 <span style="color: #383531;">S.A.V.A.G.E. Analysis</span>
