@@ -75,7 +75,7 @@ CRITICAL: Check the injury report above. NEVER include OUT/SUSPENDED players in 
 
 === S.A.V.A.G.E. FACTORS TO APPLY ===
 
-1. **USAGE VACUUM**: If star is OUT, who gets the usage boost?
+1. **USAGE VACUUM**: If star is OUT, who likely benefits? (NO exact percentages - use "significant/moderate/slight" opportunity)
 2. **ARCHETYPE vs SCHEME**: How do player types match vs defense?
    - PAINT_PACK ({', '.join(DEFENSE_SCHEMES_2025_26['PAINT_PACK'])}): Gives up 3s, protects rim
    - BLITZ ({', '.join(DEFENSE_SCHEMES_2025_26['BLITZ'])}): Traps, forces TOs
@@ -84,8 +84,10 @@ CRITICAL: Check the injury report above. NEVER include OUT/SUSPENDED players in 
    - FUNNEL ({', '.join(DEFENSE_SCHEMES_2025_26['FUNNEL'])}): Exploitable gaps
 3. **PACE**: Total 230+ = volume UP | Total <218 = grind game
 4. **BLOWOUT TAX**: Spread 10+ = starters sit early if blowout
-5. **B2B FATIGUE**: Road B2B = -3-5% volume | Home B2B = -1-2%
+5. **B2B FATIGUE**: Road B2B = lower volume expected | Home B2B = slight decline possible
 6. **LINE MOVEMENT**: Movement = information (injury, sharp money)
+
+NOTE: This is directional analysis, NOT simulation-based projections. Use qualitative terms (increased/decreased/favorable/tough) rather than exact percentages.
 
 === OUTPUT FORMAT (FOLLOW EXACTLY) ===
 
@@ -98,8 +100,9 @@ CRITICAL: Check the injury report above. NEVER include OUT/SUSPENDED players in 
 | Total | [X] | [HIGH/NORMAL/LOW pace] |
 
 **Usage Vacuum:**
-[If key player OUT: "NAME out = TEAMMATE gets +X% usage boost"]
+[If key player OUT: "NAME out = TEAMMATE likely sees increased usage/scoring opportunity (primary/secondary beneficiary)"]
 [If no major absences: "No significant vacuum scenarios"]
+[Use qualitative terms: "significant opportunity", "moderate boost", "slight increase" - NOT specific percentages]
 
 **Scheme Matchup:**
 - [Away] vs [Home DEF scheme]: [1 sentence - good/bad for whom]
@@ -140,10 +143,12 @@ If player is OUT/SUSPENDED/DOUBTFUL, say so immediately and do NOT analyze furth
 
 === S.A.V.A.G.E. FACTORS ===
 1. Archetype vs opponent defense scheme
-2. Usage vacuum (teammates OUT = boost)
+2. Usage vacuum (teammates OUT = potential boost - use qualitative terms)
 3. Pace/total impact on volume
 4. B2B fatigue if applicable
 5. Blowout risk (spread impact on minutes)
+
+IMPORTANT: Use directional language (favorable/tough, increased/decreased, likely/unlikely) rather than specific percentages. This is contextual analysis, not simulation-based projections.
 
 === OUTPUT FORMAT (FOLLOW EXACTLY) ===
 
@@ -167,7 +172,7 @@ If player is OUT/SUSPENDED/DOUBTFUL, say so immediately and do NOT analyze furth
 | Factor | Status |
 |--------|--------|
 | Schedule | [Rest days / B2B] |
-| Usage Boost | [Teammate OUT? +X%] |
+| Usage Boost | [Teammate OUT? Significant/Moderate/Slight opportunity] |
 | Blowout Risk | [Spread impact] |
 
 **Stat Focus: [REQUESTED STAT]**

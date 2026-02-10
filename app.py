@@ -321,30 +321,20 @@ def render_sidebar():
 def main():
     render_sidebar()
     
-    # 1. Glass Navbar
-    st.markdown("""
-    <div class="glass-nav fade-in">
-        <a class="nav-item">🏠 HOME</a>
-        <a class="nav-item">📊 ODDS</a>
-        <a class="nav-item">🧪 LAB</a>
-        <a class="nav-item">🧠 ASK LUDI</a>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 2. Hero Section
-    logo_svg = ui_icons.get_icon("logo_main", size=64, color="#383531")
+    # 2. Hero Section (Simplified - Logo Only)
+    logo_svg = ui_icons.get_icon("logo_main", size=80, color="#383531")
     st.markdown(f"""
-    <div class="hero-container fade-in">
-        <div style="margin-bottom: 24px;">
+    <div class="hero-container fade-in" style="padding: 40px 20px 20px;">
+        <div style="margin-bottom: 16px;">
             {logo_svg}
         </div>
-        <div class="hero-title">
-            Sanctuary from<br>the Noise.
-        </div>
-        <div class="hero-subtitle">
-            AI-POWERED SPORTS INTELLIGENCE
-        </div>
-        <a href="#" class="cta-button">ENTER THE LAB</a>
+        <!-- Ludi Lite Branding -->
+        <h1 style="font-family: var(--font-heading); font-size: 32px; margin: 0; color: var(--charcoal);">
+            Ludi Lite
+        </h1>
+        <p style="font-family: var(--font-body); font-size: 14px; color: var(--stone); letter-spacing: 1px; margin-top: 4px;">
+            RESEARCH ASSISTANT
+        </p>
     </div>
     """, unsafe_allow_html=True)
 

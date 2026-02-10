@@ -70,7 +70,7 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
     # Focused query - let API handle time filtering
     # Sources: @underdognba on Twitter/X for late-breaking player info
     query = f"""
-    NBA {away_team} vs {home_team} game.
+    NBA 2025-26 SEASON: {away_team} vs {home_team} game.
 
     TRUSTED SOURCES: @underdognba Twitter, ESPN injury report, official team accounts
 
@@ -82,9 +82,9 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
     Return ONLY:
     1. Players OUT/DOUBTFUL/SUSPENDED (name + status)
     2. Recent team form (last 3 games W/L)
-    3. Breaking news
+    3. Breaking news from THIS SEASON only
 
-    Max 100 words. Bullets only. No old recaps.
+    Max 100 words. Bullets only. No old recaps or percentage projections.
     """
 
     try:
@@ -142,21 +142,21 @@ def search_player_context(player_name: str, opponent: str = "", hours_to_game: i
 
     # Focused query - let API handle time filtering
     query = f"""
-    NBA {player_name} {opp_text}.
+    NBA 2025-26 SEASON: {player_name} {opp_text}.
 
-    TRUSTED SOURCES: @underdognba Twitter, team injury report
+    TRUSTED SOURCES: @underdognba Twitter, official team injury reports
 
     CHECK:
     - Status: OUT/SUSPENDED/DOUBTFUL/GTD/PROBABLE/ACTIVE?
     - Minutes restriction?
-    - Last 3 games stats
+    - Last 3 games performance (trending up/down?)
 
     Return ONLY:
     1. Current status (OUT/GTD/ACTIVE)
-    2. Last 3 games: PTS/AST/REB
-    3. Any news
+    2. Last 3 games trend (qualitative: hot/cold/normal)
+    3. Any relevant news
 
-    Max 80 words. Bullets only.
+    Max 80 words. Bullets only. No specific percentage projections.
     """
 
     try:
