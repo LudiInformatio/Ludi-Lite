@@ -40,6 +40,10 @@ except ImportError:
 # Team name normalization (handles Odds-API vs Tank01 naming differences)
 from team_mapping import normalize_team, get_full_name
 
+# S.A.V.A.G.E. usage calculator (data-driven stat bumps when players are OUT)
+from usage_calculator import get_usage_vacuum_analysis, format_usage_vacuum_for_prompt
+from tank01_client import get_team_roster
+
 # Extracted modules
 from database import init_db, save_analysis
 from time_utils import get_time_context, build_time_aware_prompt, ET
@@ -61,7 +65,8 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* -------------------------------------------------------------------------
-       LO-FI PREMIUM "SANCTUARY" THEME
+       LUDI LITE - MILLION DOLLAR MINIMALIST
+       "The Private Study" Aesthetic
        ------------------------------------------------------------------------- */
        
     /* 1. TYPOGRAPHY (Google Fonts) */
@@ -69,41 +74,53 @@ st.markdown("""
 
     /* 2. THEME VARIABLES */
     :root {
-        /* Palette */
-        --paper: #f5f3ed;
-        --cream: #FAF8F5;
-        --charcoal: #383531;
-        --amber: #C6A34F;
-        --stone: #8A867F;
-        --stone-light: #D4CFC5;
-        --success: #4A7C59;
+        /* Palette - Warm Editorial */
+        --paper: #F9F8F6;       /* Slightly brighter, cleaner cream */
+        --ink: #1A1A1A;         /* Richer charcoal (almost black) */
+        --stone: #7B7568;       /* Muted secondary text */
+        --subtle: #E6E4DD;      /* Very subtle borders */
+        --gold: #C6A34F;        /* Muted gold accent */
+        --success: #4A7C59;     /* Deep verified green */
         
         /* Typography */
         --font-heading: 'Libre Baskerville', serif;
         --font-body: 'Inter', sans-serif;
+        
+        /* Depth (Apple/Linear Style) */
+        --shadow-card: 
+            0 1px 2px rgba(0,0,0,0.04), 
+            0 4px 8px rgba(0,0,0,0.02),
+            0 12px 24px rgba(0,0,0,0.02);
+            
+        --shadow-hover:
+            0 2px 4px rgba(0,0,0,0.04), 
+            0 12px 24px rgba(0,0,0,0.04),
+            0 32px 64px rgba(0,0,0,0.04);
+            
+        --radius: 12px;
     }
 
-    /* 3. GLOBAL RESET & BASE STYLES */
+    /* 3. GLOBAL RESET */
     .stApp {
         background-color: var(--paper);
-        background-image: 
-            radial-gradient(var(--stone-light) 1px, transparent 1px),
-            radial-gradient(var(--stone-light) 1px, transparent 1px);
-        background-size: 20px 20px;
-        background-position: 0 0, 10px 10px;
-        background-attachment: fixed;
-        color: var(--charcoal);
+        /* Subtle noise texture for tactile feel (very low opacity) */
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+        color: var(--ink);
         font-family: var(--font-body);
     }
     
-    h1, h2, h3, h4, .big-font {
+    h1, h2, h3, h4 {
         font-family: var(--font-heading) !important;
-        color: var(--charcoal) !important;
+        font-weight: 700 !important;
+        color: var(--ink) !important;
+        letter-spacing: -0.02em !important;
+        line-height: 1.1 !important;
     }
     
     p, div, label, span {
         font-family: var(--font-body);
-        color: var(--charcoal);
+        color: var(--ink);
+        line-height: 1.5;
     }
 
     /* 4. ANIMATIONS */
@@ -111,177 +128,123 @@ st.markdown("""
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    
-    .fade-in {
-        animation: fade-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-    }
+    .fade-in { animation: fade-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
 
     /* 5. HERO SECTION */
     .hero-container {
         text-align: center;
-        padding: 80px 20px 60px;
-        background: radial-gradient(circle at center, rgba(255,255,255,0.8) 0%, rgba(245,243,237,0) 70%);
+        padding: 60px 20px 40px;
         margin-bottom: 40px;
-    }
-    
-    .hero-title {
-        font-family: var(--font-heading);
-        font-size: 56px;
-        font-weight: 700;
-        letter-spacing: -2px;
-        line-height: 1.1;
-        margin-bottom: 16px;
-        background: linear-gradient(135deg, var(--charcoal) 0%, #5a5650 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    
-    .hero-subtitle {
-        font-family: var(--font-body);
-        font-size: 16px;
-        text-transform: uppercase;
-        letter-spacing: 3px;
-        color: var(--amber);
-        font-weight: 600;
-        margin-bottom: 32px;
+        /* No background gradient - purely whitespace */
     }
 
     .cta-button {
         display: inline-block;
-        padding: 12px 32px;
-        background-color: var(--charcoal);
-        color: var(--paper) !important;
-        border-radius: 30px;
+        padding: 14px 32px;
+        background-color: var(--ink);
+        color: #FFFFFF !important;
+        border-radius: 9999px; /* Pill shape */
         font-weight: 600;
-        font-size: 14px;
+        font-size: 13px;
+        letter-spacing: 0.5px;
         text-decoration: none;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(56, 53, 49, 0.15);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .cta-button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(56, 53, 49, 0.25);
-        background-color: #2a2825;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        background-color: #000000;
     }
 
-    /* 6. GLASS NAVBAR */
-    .glass-nav {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 999;
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-        border-radius: 50px;
-        padding: 8px 24px;
-        display: flex;
-        gap: 24px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.04);
-        width: auto;
-        max-width: 90%;
-    }
+    /* 6. COMPONENT OVERRIDES */
     
-    .nav-item {
-        font-family: var(--font-body);
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--charcoal);
-        text-decoration: none;
-        opacity: 0.7;
-        transition: opacity 0.2s;
-        cursor: pointer;
-    }
-    
-    .nav-item:hover {
-        opacity: 1;
-    }
-
-    /* 7. COMPONENT HACKS (Streamlit Overrides) */
-    
-    /* Game Cards (Transforming standard Buttons into Cards) */
-    /* Target: div.row-widget.stButton > button */
+    /* Buttons as Cards (Game Cards) */
     div.row-widget.stButton > button {
-        background-color: var(--cream);
-        border: 1px solid var(--stone-light);
-        border-radius: 12px;
-        padding: 16px 24px;
+        background: #FFFFFF;
+        border: 1px solid rgba(0,0,0,0.03); /* Almost invisible border */
+        box-shadow: var(--shadow-card);
+        border-radius: var(--radius);
+        padding: 20px 24px;
         text-align: left;
-        box-shadow: 0 4px 6px -1px rgba(56, 53, 49, 0.05); /* Subtle shadow */
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        color: var(--ink);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         height: auto;
-        min-height: 80px;
+        min-height: 90px;
     }
     
     div.row-widget.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(198, 163, 79, 0.15); /* Amber glow */
-        border-color: var(--amber);
-        color: var(--charcoal);
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-hover);
+        border-color: var(--gold);
+        background: #FFFFFF;
+        z-index: 10;
+        position: relative;
     }
     
     div.row-widget.stButton > button:active, 
     div.row-widget.stButton > button:focus {
-        border-color: var(--amber);
-        color: var(--charcoal);
-        background-color: #fff;
+        border-color: var(--gold);
+        box-shadow: 0 0 0 2px rgba(198, 163, 79, 0.2);
     }
 
-    /* Inputs (Text Input, Number Input) */
-    .stTextInput input, .stNumberInput input, .stSelectbox select {
-        background-color: #fff;
-        border: 1px solid var(--stone-light);
-        border-radius: 8px;
-        color: var(--charcoal);
-        font-family: var(--font-body);
-        box-shadow: none;
-        padding: 10px 14px;
+    /* Inputs (Text, Select, Number) */
+    /* Remove default gray borders and shadows */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] > div, .stNumberInput input {
+        background-color: #FFFFFF !important;
+        border: 1px solid var(--subtle) !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        color: var(--ink) !important;
+        font-family: var(--font-body) !important;
+        padding: 10px 14px !important;
+        transition: border-color 0.2s, box-shadow 0.2s;
     }
     
-    .stTextInput input:focus, .stNumberInput input:focus {
-        border-color: var(--amber);
-        box-shadow: 0 0 0 1px var(--amber);
+    .stTextInput input:focus, .stNumberInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
+        border-color: var(--gold) !important;
+        box-shadow: 0 0 0 3px rgba(198, 163, 79, 0.15) !important;
     }
-
-    /* Analysis Panels (Custom Containers) */
+    
+    /* Analysis Panels */
     .sanctuary-panel {
-        background: linear-gradient(180deg, #FFFFFF 0%, var(--cream) 100%);
-        border: 1px solid var(--stone-light);
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        background: #FFFFFF;
+        border: 1px solid rgba(0,0,0,0.03);
+        border-radius: var(--radius);
+        padding: 32px; /* More whitespace */
+        margin-bottom: 32px;
+        box-shadow: var(--shadow-card);
         animation: fade-in 0.5s ease-out;
     }
     
     .panel-header {
         font-family: var(--font-heading);
-        font-size: 18px;
-        margin-bottom: 12px;
+        font-size: 20px;
+        margin-bottom: 16px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
+        border-bottom: 1px solid var(--subtle);
+        padding-bottom: 16px;
     }
 
     /* Badges & Tags */
     .badge-amber {
-        background-color: rgba(198, 163, 79, 0.15);
+        background-color: rgba(198, 163, 79, 0.1);
         color: #8E7022;
-        padding: 4px 8px;
+        padding: 4px 10px;
         border-radius: 4px;
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 10px;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.08em; /* Wide tracking */
     }
 
     /* Utility Helpers */
     .text-stone { color: var(--stone) !important; }
     .text-sm { font-size: 13px !important; }
-    .uppercase { text-transform: uppercase; letter-spacing: 1px; }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; font-size: 11px; }
 
     /* Hide Default UI Gunk */
     #MainMenu {visibility: hidden;}
@@ -293,6 +256,29 @@ st.markdown("""
 
 # Initialize database at module level
 init_db()
+
+
+def _get_vacuum_context(team_abbr: str, game_total=None) -> str:
+    """
+    Get S.A.V.A.G.E. usage vacuum analysis for a team.
+    Returns formatted text to inject into Claude's prompt, or empty string.
+    """
+    try:
+        roster = get_team_roster(team_abbr, include_stats=True)
+        if not roster:
+            return ""
+        injured = [
+            p["name"] for p in roster
+            if p.get("injury", {}).get("designation", "").upper()
+            in ("OUT", "DOUBTFUL", "SUSPENDED")
+        ]
+        if not injured:
+            return ""
+        total = float(game_total) if game_total else None
+        analysis = get_usage_vacuum_analysis(team_abbr, injured, game_total=total)
+        return format_usage_vacuum_for_prompt(analysis)
+    except Exception:
+        return ""
 
 def render_sidebar():
     with st.sidebar:
@@ -333,7 +319,7 @@ def main():
             Ludi Lite
         </h1>
         <p style="font-family: var(--font-body); font-size: 14px; color: var(--stone); letter-spacing: 1px; margin-top: 4px;">
-            RESEARCH ASSISTANT
+            The Smart AI Bet Research Agent
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -395,6 +381,14 @@ def main():
         if home_ml and away_ml:
             ml_str = f"\nMONEYLINE: {selected_game['away']} {away_ml:+d} / {selected_game['home']} {home_ml:+d}" if isinstance(home_ml, int) else ""
 
+        # S.A.V.A.G.E. usage vacuum analysis for both teams
+        game_total = selected_game.get('total')
+        vacuum_text = ""
+        home_vacuum = _get_vacuum_context(selected_game['home'], game_total)
+        away_vacuum = _get_vacuum_context(selected_game['away'], game_total)
+        if home_vacuum or away_vacuum:
+            vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E. - calculated from Tank01 stats) ===\n{home_vacuum}{away_vacuum}"
+
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
 SPREAD: {selected_game['home']} {spread_str}
@@ -408,6 +402,7 @@ TIME: {selected_game.get('time') or 'TBD'}
 
 {live_context}
 {props_context}
+{vacuum_text}
 """
 
     elif query and (analyze_both or analyze_ludi):
@@ -415,6 +410,13 @@ TIME: {selected_game.get('time') or 'TBD'}
 
         if query_type == "game":
             live_context = get_game_specific_context(params['home'], params['away'])
+            # S.A.V.A.G.E. vacuum for chat-based game queries
+            vacuum_text = ""
+            home_v = _get_vacuum_context(params['home'])
+            away_v = _get_vacuum_context(params['away'])
+            if home_v or away_v:
+                vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{home_v}{away_v}"
+
             analysis_input = f"""
 GAME: {params['away']} @ {params['home']}
 {params['away']} Defense: {get_defense_scheme(params['away'])}
@@ -423,6 +425,7 @@ GAME: {params['away']} @ {params['home']}
 {params['home']} Offense: {get_offense_scheme(params['home'])}
 
 {live_context}
+{vacuum_text}
 """
 
         elif query_type in ["player", "player_prop"]:
@@ -461,6 +464,15 @@ TIME: {g.get('time', 'TBD')}
 {live_matchup}
 """
 
+            # S.A.V.A.G.E. vacuum for player's team (shows if teammates are OUT)
+            player_vacuum = ""
+            player_team = game_match.get('team')
+            if player_team:
+                g_total = game_match.get("game", {}).get("total")
+                player_vacuum = _get_vacuum_context(player_team, g_total)
+                if player_vacuum:
+                    player_vacuum = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{player_vacuum}"
+
             analysis_input = f"""
 PLAYER: {params['name']}
 TEAM: {game_match.get('team', 'Unknown')}
@@ -471,6 +483,7 @@ QUERY: {query}
 
 {game_context}
 {player_context}
+{player_vacuum}
 """
             query_type = "player"
 
@@ -576,17 +589,10 @@ QUERY: {query}
                     padding: 4px 10px; margin: 3px; font-size: 10px; color: #5B8A69; display: inline-block;">Tank01 API</span>
         <span style="background: rgba(160, 135, 61, 0.08); border: 1px solid #B39443; border-radius: 4px;
                     padding: 4px 10px; margin: 3px; font-size: 10px; color: #806A2F; display: inline-block;">The-Odds-API</span>
+        <span style="background: rgba(139, 92, 246, 0.08); border: 1px solid #9B7BC6; border-radius: 4px;
+                    padding: 4px 10px; margin: 3px; font-size: 10px; color: #7B5FA6; display: inline-block;">Perplexity AI</span>
     </div>
     """, unsafe_allow_html=True)
-
-    # Perplexity badge if enabled - Light mode
-    if PERPLEXITY_ENABLED:
-        st.markdown("""
-        <div style="text-align: center; margin-bottom: 12px;">
-            <span style="background: rgba(139, 92, 246, 0.08); border: 1px solid #9B7BC6; border-radius: 4px;
-                        padding: 4px 10px; font-size: 10px; color: #7B5FA6; display: inline-block;">+ Perplexity Search</span>
-        </div>
-        """, unsafe_allow_html=True)
 
     st.markdown("""
     <p style="color: #6B6760; font-size: 11px; text-align: center;">

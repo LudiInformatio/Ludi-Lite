@@ -17,6 +17,104 @@ from team_mapping import normalize_team
 from tank01_client import get_team_roster
 from season_context import TRADE_DEADLINE_OVERRIDES
 
+# Common NBA player nicknames/abbreviations → full names
+# Used to resolve shorthand before roster matching
+# Why: Tank01 rosters use full names, so "sga" won't match "Shai Gilgeous-Alexander"
+PLAYER_NICKNAMES = {
+    # Acronym nicknames (won't match via substring)
+    "sga": "Shai Gilgeous-Alexander",
+    "kd": "Kevin Durant",
+    "cp3": "Chris Paul",
+    "pg": "Paul George",
+    "pg13": "Paul George",
+    "rj": "RJ Barrett",
+    "cj": "CJ McCollum",
+    "tj": "TJ McConnell",
+    "kat": "Karl-Anthony Towns",
+    "ad": "Anthony Davis",
+    "rui": "Rui Hachimura",
+    "dlo": "D'Angelo Russell",
+    "spida": "Donovan Mitchell",
+    "abc": "Anthony Black",
+
+    # Short first-name nicknames that could be ambiguous
+    "lebron": "LeBron James",
+    "bron": "LeBron James",
+    "giannis": "Giannis Antetokounmpo",
+    "greek freak": "Giannis Antetokounmpo",
+    "luka": "Luka Doncic",
+    "jokic": "Nikola Jokic",
+    "joker": "Nikola Jokic",
+    "steph": "Stephen Curry",
+    "curry": "Stephen Curry",
+    "dame": "Damian Lillard",
+    "embiid": "Joel Embiid",
+    "trae": "Trae Young",
+    "ice trae": "Trae Young",
+    "lamelo": "LaMelo Ball",
+    "melo": "LaMelo Ball",
+    "ant": "Anthony Edwards",
+    "ant man": "Anthony Edwards",
+    "book": "Devin Booker",
+    "booker": "Devin Booker",
+    "ja": "Ja Morant",
+    "zion": "Zion Williamson",
+    "kawhi": "Kawhi Leonard",
+    "jimmy": "Jimmy Butler",
+    "jimmy buckets": "Jimmy Butler",
+    "harden": "James Harden",
+    "kyrie": "Kyrie Irving",
+    "bam": "Bam Adebayo",
+    "fox": "De'Aaron Fox",
+    "cade": "Cade Cunningham",
+    "paolo": "Paolo Banchero",
+    "wemby": "Victor Wembanyama",
+    "wemby": "Victor Wembanyama",
+    "chet": "Chet Holmgren",
+    "brunson": "Jalen Brunson",
+    "maxey": "Tyrese Maxey",
+    "hali": "Tyrese Haliburton",
+    "siakam": "Pascal Siakam",
+    "tatum": "Jayson Tatum",
+    "jt": "Jayson Tatum",
+    "brown": "Jaylen Brown",
+    "jb": "Jaylen Brown",
+    "garland": "Darius Garland",
+    "mobley": "Evan Mobley",
+    "scottie": "Scottie Barnes",
+    "franz": "Franz Wagner",
+    "suggs": "Jalen Suggs",
+    "herb": "Herb Jones",
+    "ingram": "Brandon Ingram",
+    "bi": "Brandon Ingram",
+    "reaves": "Austin Reaves",
+    "ar": "Austin Reaves",
+    "sengun": "Alperen Sengun",
+    "amen": "Amen Thompson",
+    "jabari": "Jabari Smith Jr.",
+    "murray": "Dejounte Murray",
+    "jamal": "Jamal Murray",
+    "mpj": "Michael Porter Jr.",
+    "dort": "Luguentz Dort",
+    "shai": "Shai Gilgeous-Alexander",
+    "sabonis": "Domantas Sabonis",
+    "dejounte": "Dejounte Murray",
+    "demar": "DeMar DeRozan",
+    "derozan": "DeMar DeRozan",
+    "lavine": "Zach LaVine",
+    "tre": "Tre Jones",
+    "mikal": "Mikal Bridges",
+    "cam": "Cam Thomas",
+}
+
+
+def resolve_player_nickname(name: str) -> str:
+    """
+    Resolve common nicknames/abbreviations to full player names.
+    Returns the full name if a match is found, otherwise returns original input.
+    """
+    return PLAYER_NICKNAMES.get(name.lower().strip(), name)
+
 
 def parse_chat_query(query: str) -> Tuple[str, dict]:
     """
@@ -129,7 +227,10 @@ def parse_chat_query(query: str) -> Tuple[str, dict]:
 
         # Clean up name (remove common prefixes)
         name = name_raw.replace("give me", "").replace("info on", "").replace("about", "").strip()
-        name = name.title()
+        # Resolve nicknames BEFORE title-casing (e.g., "sga" → "Shai Gilgeous-Alexander")
+        name = resolve_player_nickname(name)
+        if name == name_raw.strip():
+            name = name.title()  # Only title-case if not resolved from nickname map
 
         # Normalize stat
         stat = stat_aliases.get(stat_raw, stat_raw.upper())
@@ -149,7 +250,10 @@ def parse_chat_query(query: str) -> Tuple[str, dict]:
 
         # Clean name
         name = name_raw.replace("give me", "").replace("info on", "").replace("about", "").strip()
-        name = name.title()
+        # Resolve nicknames before title-casing
+        name = resolve_player_nickname(name)
+        if name == name_raw.strip():
+            name = name.title()
 
         # Normalize stat
         stat = stat_aliases.get(stat_raw, stat_raw.upper())
@@ -175,7 +279,11 @@ def parse_chat_query(query: str) -> Tuple[str, dict]:
 
     # If something remains, treat as player name
     if clean_query and len(clean_query) > 1:
-        return "player", {"name": clean_query.title(), "stat": "All Stats"}
+        # Resolve nicknames (e.g., "sga" → "Shai Gilgeous-Alexander")
+        resolved = resolve_player_nickname(clean_query)
+        if resolved == clean_query:
+            resolved = clean_query.title()
+        return "player", {"name": resolved, "stat": "All Stats"}
 
     return "unknown", {}
 

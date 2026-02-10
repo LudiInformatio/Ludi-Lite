@@ -20,9 +20,11 @@ KNOWN_SUSPENSIONS = [
 # Remove entries once Tank01 rosters sync (usually 24-48 hours post-trade)
 # Format: {"name": player, "team": new_team} - used by match_player_to_game as fallback
 TRADE_DEADLINE_OVERRIDES = {
-    # Feb 4-5, 2026 trades (remove once Tank01 confirms)
-    "luka doncic": "LAL",
-    "deandre ayton": "LAL",
+    # ONLY for trades so recent (24-48 hrs) that Tank01 hasn't synced yet.
+    # Remove entries once Tank01 rosters confirm the move.
+    # DO NOT add offseason moves here - those are already in Tank01.
+    #
+    # Feb 4-5, 2026 deadline trades:
     "anthony davis": "WAS",
     "trae young": "WAS",
     "james harden": "CLE",
@@ -32,7 +34,8 @@ TRADE_DEADLINE_OVERRIDES = {
     "coby white": "CHA",
     "ayo dosunmu": "MIN",
     "anfernee simons": "CHI",
-    "jimmy butler": "GSW",
+    # NOTE: Luka Doncic, Deandre Ayton, Jimmy Butler are OFFSEASON moves (Oct 2025).
+    # They are already in Tank01 rosters - no override needed.
 }
 
 # Defense scheme assignments for 2025-26
@@ -159,17 +162,18 @@ def get_static_roster_context() -> str:
     return """
 === 2025-26 SEASON ROSTER CHANGES ===
 
-OFFSEASON MOVES (Summer 2025):
+OFFSEASON MOVES (Summer/Oct 2025) — ESTABLISHED (5+ months on team, fully integrated):
+- Luka Doncic → LA LAKERS (from Dallas)
+- Deandre Ayton → LA LAKERS (from Portland)
+- Jimmy Butler → GOLDEN STATE (from Miami) — OUT with torn ACL
 - Klay Thompson → DALLAS (from Golden State)
 - Paul George → PHILADELPHIA (from LA Clippers) — currently SUSPENDED
 - DeMar DeRozan → SACRAMENTO (from Chicago)
 - Isaiah Hartenstein → OKLAHOMA CITY (from New York)
 - Dejounte Murray → NEW ORLEANS (from Atlanta)
 
-TRADE DEADLINE (Feb 4-5, 2026):
-- Luka Doncic → LA LAKERS (from Dallas)
-- Deandre Ayton → LA LAKERS (from Portland)
-- Anthony Davis → WASHINGTON (from Dallas)
+TRADE DEADLINE (Feb 4-5, 2026) — RECENTLY TRADED (may need 2-3 games to integrate):
+- Anthony Davis → WASHINGTON (from LA Lakers)
 - Trae Young → WASHINGTON (from Atlanta)
 - James Harden → CLEVELAND (from LA Clippers)
 - Darius Garland → LA CLIPPERS (from Cleveland)
@@ -178,7 +182,6 @@ TRADE DEADLINE (Feb 4-5, 2026):
 - Coby White → CHARLOTTE (from Chicago)
 - Ayo Dosunmu → MINNESOTA (from Chicago)
 - Anfernee Simons → CHICAGO (from Portland)
-- Jimmy Butler → GOLDEN STATE (from Miami) — OUT with torn ACL
 
 NOTE: Tank01 API rosters reflect these changes in real-time.
 Use LIVE roster data above when available, this list as fallback only.
@@ -221,7 +224,8 @@ DEFENSE SCHEME ASSIGNMENTS (2025-26):
 
 CONTEXT NOTES:
 - This is the 2025-26 NBA season. Do NOT reference prior seasons' rosters.
-- Newly traded players may need 2-3 games to integrate with new team
+- OFFSEASON MOVES (Summer 2025): These players are ESTABLISHED (5+ months). Do NOT call them "newly traded" or "still adjusting" (e.g., Luka Doncic, Deandre Ayton, Jimmy Butler, Klay Thompson, Paul George).
+- TRADE DEADLINE (Feb 4-5, 2026): These players are RECENTLY TRADED (~5 days ago). May need 2-3 games for chemistry/system integration (e.g., Anthony Davis, Trae Young, James Harden, Darius Garland).
 - Check injury status before projecting minutes/usage
 - Back-to-back games typically reduce production by 3-5%
 - Suspended players are NOT on Tank01 rosters - check KNOWN_SUSPENSIONS above
