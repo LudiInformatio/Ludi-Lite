@@ -44,6 +44,10 @@ from team_mapping import normalize_team, get_full_name
 from usage_calculator import get_usage_vacuum_analysis, format_usage_vacuum_for_prompt
 from tank01_client import get_team_roster
 
+# Context cards + matchup ratings
+from components import render_game_context_card, render_player_context_card
+from matchup_utils import get_matchup_rating
+
 # Extracted modules
 from database import init_db, save_analysis
 from time_utils import get_time_context, build_time_aware_prompt, ET
@@ -282,22 +286,12 @@ def _get_vacuum_context(team_abbr: str, game_total=None) -> str:
 
 def render_sidebar():
     with st.sidebar:
-        st.header("⚙️ Settings")
-        
-        with st.expander("Live Odds Ticker", expanded=True):
-            st.info("Configure your The-Odds-API widget here.")
-            
-            # Widget HTML Input
-            widget_html = st.text_area(
-                "Paste Widget HTML Code",
-                height=150,
-                placeholder="<script>...</script>",
-                help="Get your widget from the-odds-api.com"
-            )
-            
-            if widget_html:
-                st.markdown("### Preview")
-                st.components.v1.html(widget_html, height=400, scrolling=True)
+        st.markdown("""
+        <div style="padding: 20px 0;">
+            <p style="font-family: var(--font-heading); font-size: 14px; color: var(--ink); font-weight: 700;">Ludi Lite</p>
+            <p style="font-size: 11px; color: var(--stone);">v0.4 &middot; Research Lab</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # =============================================================================
@@ -389,6 +383,18 @@ def main():
         if home_vacuum or away_vacuum:
             vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E. - calculated from Tank01 stats) ===\n{home_vacuum}{away_vacuum}"
 
+        # Render context card between game selection and AI analysis
+        render_game_context_card({
+            "away": selected_game['away'],
+            "home": selected_game['home'],
+            "time": selected_game.get('time', ''),
+            "spread": spread_str,
+            "total": selected_game.get('total'),
+            "home_rating": get_matchup_rating(selected_game['away']),   # home faces away's offense
+            "away_rating": get_matchup_rating(selected_game['home']),   # away faces home's offense
+            "vacuum_text": vacuum_text,
+        })
+
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
 SPREAD: {selected_game['home']} {spread_str}
@@ -472,6 +478,38 @@ TIME: {g.get('time', 'TBD')}
                 player_vacuum = _get_vacuum_context(player_team, g_total)
                 if player_vacuum:
                     player_vacuum = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{player_vacuum}"
+
+            # Render player context card between query and AI analysis
+            _player_status = "Active"
+            _player_stats = {}
+            if player_team:
+                try:
+                    _roster = get_team_roster(player_team, include_stats=True)
+                    for _p in _roster:
+                        if params['name'].lower() in _p.get("name", "").lower():
+                            _inj = _p.get("injury", {})
+                            _player_status = _inj.get("designation") or "Active"
+                            _s = _p.get("stats", {})
+                            if _s:
+                                _player_stats = {
+                                    "pts": _s.get("pts", ""),
+                                    "ast": _s.get("ast", ""),
+                                    "reb": _s.get("reb", ""),
+                                }
+                            break
+                except Exception:
+                    pass
+
+            render_player_context_card({
+                "name": params['name'],
+                "team": player_team or "",
+                "opponent": opponent if opponent != "Unknown" else "",
+                "status": _player_status,
+                "opp_rating": get_matchup_rating(opponent) if opponent and opponent != "Unknown" else {},
+                "total": game_match.get("game", {}).get("total"),
+                "stats": _player_stats,
+                "vacuum_text": player_vacuum,
+            })
 
             analysis_input = f"""
 PLAYER: {params['name']}

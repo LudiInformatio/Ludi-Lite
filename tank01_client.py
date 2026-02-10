@@ -403,6 +403,34 @@ def get_team_recent_record(team_abbr: str, num_games: int = 5) -> Dict[str, Any]
     }
 
 
+@st.cache_data(ttl=3600)  # 1 hour — team stats don't change mid-game
+def get_all_team_stats() -> Dict[str, Dict]:
+    """
+    Fetch team-level stats from Tank01.
+    Returns: {"BOS": {"ppg": 112.3, "oppg": 105.1}, ...}
+    """
+    data = _make_request("getNBATeams", {
+        "teamStats": "true",
+        "statsToGet": "averages"
+    })
+    if not data or "body" not in data:
+        return {}
+
+    teams = {}
+    for team in data["body"]:
+        abbr = _to_standard_abbr(team.get("teamAbv", ""))
+        if not abbr:
+            continue
+        try:
+            teams[abbr] = {
+                "ppg": float(team.get("ppg", 0) or 0),
+                "oppg": float(team.get("oppg", 0) or 0),
+            }
+        except (ValueError, TypeError):
+            continue
+    return teams
+
+
 def format_player_context(player_name: str, team_abbr: str = None) -> str:
     """
     Format player-specific context for prop analysis.
