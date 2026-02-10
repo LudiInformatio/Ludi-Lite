@@ -39,6 +39,11 @@ def clean_ai_response(response: str) -> str:
         r"(?i)always name.*?top.*?players.*?\n",
         r"(?i)check the injury report above.*?\n",
         r"(?i)use ONLY the rosters/injuries from.*?\n",
+        # Parenthetical instructions (NEW - from Feb 10 testing)
+        r"\(ONLY include players NOT on injury list\)",
+        r"\(ONLY ACTIVE players - check injury list!\)",
+        r"\(only include.*?active.*?\)",
+        r"\(check.*?injury.*?list.*?\)",
     ]
 
     cleaned = response
@@ -53,21 +58,21 @@ def clean_ai_response(response: str) -> str:
 
 
 def render_header():
-    """Render app header with Lo-Fi Premium styling."""
+    """Render app header with Lo-Fi Premium styling (light mode)."""
     st.markdown("""
     <div style="text-align: center; padding: 20px 0 30px 0;">
         <div style="display: inline-flex; align-items: center; gap: 12px;">
             <span style="font-size: 32px;">🏀</span>
             <div>
-                <h1 style="color: #f5f3ed; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -1px;">
+                <h1 style="color: #383531; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -1px;">
                     Ludi Lite
                 </h1>
-                <p style="color: #C6A34F; margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+                <p style="color: #A0873D; margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
                     AI Sports Research Lab
                 </p>
             </div>
         </div>
-        <p style="color: #8A867F; font-size: 13px; margin-top: 12px; font-style: italic;">
+        <p style="color: #6B6760; font-size: 13px; margin-top: 12px; font-style: italic;">
             "A Sanctuary from the Noise"
         </p>
     </div>
@@ -205,10 +210,10 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
     methodology = clean_ai_response(methodology) if methodology else ""
 
     if show_both and freestyle and methodology:
-        # Section header
+        # Section header - Light mode
         st.markdown("""
         <div style="text-align: center; margin-bottom: 20px;">
-            <span style="color: #8A867F; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+            <span style="color: #6B6760; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
                 Analysis Comparison
             </span>
         </div>
@@ -217,80 +222,80 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
         col1, col2 = st.columns(2)
 
         with col1:
-            # Freestyle Header
+            # Freestyle Header - Light mode
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #2A3441 0%, #344152 100%);
-                        border: 2px solid #5B7C99; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
+            <div style="background: linear-gradient(135deg, #F8FAFB 0%, #EDF2F7 100%);
+                        border: 2px solid #7B94AB; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                     <span style="font-size: 20px;">🔍</span>
                     <div>
-                        <div style="color: #f5f3ed; font-weight: 600;">FREESTYLE</div>
-                        <div style="color: #5B7C99; font-size: 11px;">Raw AI Research</div>
+                        <div style="color: #383531; font-weight: 600;">FREESTYLE</div>
+                        <div style="color: #5B7089; font-size: 11px;">Raw AI Research</div>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Perplexity badge if used
+            # Perplexity badge if used - Light mode
             if perplexity_used:
                 st.markdown("""
-                <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid #8B5CF6;
+                <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid #9B7BC6;
                             border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; display: inline-block;">
-                    <span style="color: #A78BFA; font-size: 11px;">⚡ + Perplexity Real-Time</span>
+                    <span style="color: #7B5FA6; font-size: 11px;">⚡ + Perplexity Real-Time</span>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.markdown(freestyle)
 
         with col2:
-            # S.A.V.A.G.E. Header
+            # S.A.V.A.G.E. Header - Light mode
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #2A3D2E 0%, #344D3A 100%);
-                        border: 2px solid #4A7C59; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
+            <div style="background: linear-gradient(135deg, #F6FAF7 0%, #E8F4ED 100%);
+                        border: 2px solid #6B9876; border-radius: 12px; padding: 16px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
                     <span style="font-size: 20px;">🎯</span>
                     <div>
-                        <div style="color: #f5f3ed; font-weight: 600;">S.A.V.A.G.E.</div>
-                        <div style="color: #4A7C59; font-size: 11px;">Ludi Methodology</div>
+                        <div style="color: #383531; font-weight: 600;">S.A.V.A.G.E.</div>
+                        <div style="color: #5B8A69; font-size: 11px;">Ludi Methodology</div>
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # Methodology badges
+            # Methodology badges - Light mode
             st.markdown("""
             <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
-                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
-                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Usage Vacuum</span>
-                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
-                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Archetype</span>
-                <span style="background: rgba(198, 163, 79, 0.15); border: 1px solid #C6A34F;
-                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #C6A34F;">Pace</span>
+                <span style="background: rgba(160, 135, 61, 0.12); border: 1px solid #B39443;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #806A2F;">Usage Vacuum</span>
+                <span style="background: rgba(160, 135, 61, 0.12); border: 1px solid #B39443;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #806A2F;">Archetype</span>
+                <span style="background: rgba(160, 135, 61, 0.12); border: 1px solid #B39443;
+                            border-radius: 4px; padding: 3px 8px; font-size: 10px; color: #806A2F;">Pace</span>
             </div>
             """, unsafe_allow_html=True)
 
             st.markdown(methodology)
 
-        # Comparison legend
+        # Comparison legend - Light mode
         st.markdown("""
-        <div style="background: #2D2A26; border-radius: 8px; padding: 12px; margin-top: 16px;">
-            <div style="color: #8A867F; font-size: 11px; text-align: center;">
-                <strong style="color: #5B7C99;">Freestyle</strong> = General AI research |
-                <strong style="color: #4A7C59;">S.A.V.A.G.E.</strong> = Usage Vacuum • Archetype vs Scheme • Pace • Blowout Tax • B2B Fatigue
+        <div style="background: #FFFFFF; border: 1px solid #D4CFC5; border-radius: 8px; padding: 12px; margin-top: 16px;">
+            <div style="color: #6B6760; font-size: 11px; text-align: center;">
+                <strong style="color: #5B7089;">Freestyle</strong> = General AI research |
+                <strong style="color: #5B8A69;">S.A.V.A.G.E.</strong> = Usage Vacuum • Archetype vs Scheme • Pace • Blowout Tax • B2B Fatigue
             </div>
         </div>
         """, unsafe_allow_html=True)
 
     elif methodology:
-        # Single panel (Ludi Method only)
+        # Single panel (Ludi Method only) - Light mode
         st.markdown("""
-        <div style="background: linear-gradient(135deg, #2A3D2E 0%, #344D3A 100%);
-                    border: 2px solid #4A7C59; border-radius: 12px; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #F6FAF7 0%, #E8F4ED 100%);
+                    border: 2px solid #6B9876; border-radius: 12px; padding: 20px;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
                 <span style="font-size: 24px;">🎯</span>
                 <div>
-                    <div style="color: #f5f3ed; font-weight: 600; font-size: 18px;">S.A.V.A.G.E. Analysis</div>
-                    <div style="color: #4A7C59; font-size: 12px;">Ludi Methodology Applied</div>
+                    <div style="color: #383531; font-weight: 600; font-size: 18px;">S.A.V.A.G.E. Analysis</div>
+                    <div style="color: #5B8A69; font-size: 12px;">Ludi Methodology Applied</div>
                 </div>
             </div>
         </div>
