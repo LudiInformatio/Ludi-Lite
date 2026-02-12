@@ -195,7 +195,7 @@ def render_chat_interface():
     return query, analyze_both, analyze_method
 
 
-def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False):
+def render_analysis_output(freestyle: str, methodology: str, show_both: bool = True, perplexity_used: bool = False, card_data: dict = None):
     """
     Render analysis output in side-by-side 'Sanctuary' panels.
     """
@@ -244,10 +244,18 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
                 <span class="badge-amber">Pace</span>
             </div>
             """), unsafe_allow_html=True)
-            
+
+            # Data card inside panel
+            if card_data:
+                from components import render_game_context_card, render_player_context_card
+                if card_data.get("type") == "game":
+                    render_game_context_card(card_data)
+                elif card_data.get("type") == "player":
+                    render_player_context_card(card_data)
+
             st.markdown(methodology)
             st.markdown("</div></div>", unsafe_allow_html=True)
-    
+
     elif methodology:
         # SINGLE PANEL
         icon = ui_icons.get_icon("methodology", color="#4A7C59")
@@ -259,6 +267,15 @@ def render_analysis_output(freestyle: str, methodology: str, show_both: bool = T
             </div>
             <div style="font-size: 14px; line-height: 1.6;">
         """), unsafe_allow_html=True)
+
+        # Data card inside panel
+        if card_data:
+            from components import render_game_context_card, render_player_context_card
+            if card_data.get("type") == "game":
+                render_game_context_card(card_data)
+            elif card_data.get("type") == "player":
+                render_player_context_card(card_data)
+
         st.markdown(methodology)
         st.markdown("</div></div>", unsafe_allow_html=True)
 

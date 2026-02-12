@@ -44,6 +44,10 @@ from team_mapping import normalize_team, get_full_name
 from usage_calculator import get_usage_vacuum_analysis, format_usage_vacuum_for_prompt
 from tank01_client import get_team_roster
 
+# Context card rendering and matchup ratings for visual cards
+from components import render_game_context_card, render_player_context_card
+from matchup_utils import get_matchup_rating
+
 # Extracted modules
 from database import init_db, save_analysis
 from time_utils import get_time_context, build_time_aware_prompt, ET
@@ -280,6 +284,81 @@ def _get_vacuum_context(team_abbr: str, game_total=None) -> str:
     except Exception:
         return ""
 
+
+def _extract_top_props(props: dict, max_per_stat: int = 2) -> list:
+    """Extract top prop lines for card display from fetch_player_props() output."""
+    if not props:
+        return []
+    raw = []
+    for category in ["points", "rebounds", "assists", "threes"]:
+        seen_players = set()
+        for prop in props.get(category, []):
+            player = prop.get("player", "")
+            if player and player not in seen_players and prop.get("type") == "Over":
+                seen_players.add(player)
+                raw.append({
+                    "player": player,
+                    "stat": category[:3].upper(),
+                    "line": prop.get("line"),
+                    "book": prop.get("book", ""),
+                    "odds": prop.get("odds"),
+                })
+                if len(seen_players) >= max_per_stat:
+                    break
+    return _merge_book_odds(raw)[:8]
+
+
+def _merge_book_odds(props_list: list) -> list:
+    """Merge FanDuel and DraftKings odds for same player+stat+line into one row."""
+    merged = {}
+    for p in props_list:
+        key = (p["player"], p["stat"], p["line"])
+        if key not in merged:
+            merged[key] = {
+                "player": p["player"], "stat": p["stat"],
+                "line": p["line"], "fd_odds": None, "dk_odds": None,
+            }
+        book = (p.get("book") or "").lower()
+        if "fanduel" in book:
+            merged[key]["fd_odds"] = p["odds"]
+        elif "draftkings" in book:
+            merged[key]["dk_odds"] = p["odds"]
+        elif not merged[key]["fd_odds"]:
+            merged[key]["fd_odds"] = p["odds"]
+        elif not merged[key]["dk_odds"]:
+            merged[key]["dk_odds"] = p["odds"]
+    return list(merged.values())
+
+
+def _get_player_season_stats(player_name: str, team_abbr: str = None) -> dict:
+    """Get player season averages for card display."""
+    try:
+        if not team_abbr:
+            return {}
+        roster = get_team_roster(team_abbr, include_stats=True)
+        for p in roster:
+            if player_name.lower() in p.get("name", "").lower():
+                s = p.get("stats", {})
+                return {"pts": s.get("pts", ""), "reb": s.get("reb", ""), "ast": s.get("ast", "")}
+        return {}
+    except Exception:
+        return {}
+
+
+def _get_player_injury_status(player_name: str, team_abbr: str = None) -> str:
+    """Get player injury designation for card display."""
+    try:
+        if not team_abbr:
+            return ""
+        roster = get_team_roster(team_abbr)
+        for p in roster:
+            if player_name.lower() in p.get("name", "").lower():
+                return p.get("injury", {}).get("designation", "") or ""
+        return ""
+    except Exception:
+        return ""
+
+
 def render_sidebar():
     with st.sidebar:
         st.markdown("""
@@ -339,6 +418,7 @@ def main():
     analysis_input = None
     query_type = None
     late_news = ""
+    card_data = None
 
     # Priority: Selected game card > Chat query > Manual input
     if selected_game:
@@ -378,6 +458,24 @@ def main():
         away_vacuum = _get_vacuum_context(selected_game['away'], game_total)
         if home_vacuum or away_vacuum:
             vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E. - calculated from Tank01 stats) ===\n{home_vacuum}{away_vacuum}"
+
+        # Build visual card data (not passed to Claude)
+        card_data = {
+            "type": "game",
+            "away": selected_game['away'],
+            "home": selected_game['home'],
+            "away_full": selected_game.get('away_full', ''),
+            "home_full": selected_game.get('home_full', ''),
+            "time": selected_game.get('time', 'TBD'),
+            "spread": spread_str,
+            "total": selected_game.get('total'),
+            "home_ml": home_ml,
+            "away_ml": away_ml,
+            "home_rating": get_matchup_rating(selected_game['away']),
+            "away_rating": get_matchup_rating(selected_game['home']),
+            "top_props": _extract_top_props(props if game_id else {}),
+            "vacuum_text": vacuum_text,
+        }
 
         analysis_input = f"""
 GAME: {selected_game['away']} @ {selected_game['home']}
@@ -462,6 +560,23 @@ TIME: {g.get('time', 'TBD')}
                 player_vacuum = _get_vacuum_context(player_team, g_total)
                 if player_vacuum:
                     player_vacuum = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{player_vacuum}"
+
+            # Build visual card data
+            card_data = {
+                "type": "player",
+                "name": params['name'],
+                "team": player_team or "",
+                "opponent": opponent if opponent != "Unknown" else "",
+                "time": game_match.get("game", {}).get("time", ""),
+                "status": _get_player_injury_status(params['name'], player_team),
+                "stats": _get_player_season_stats(params['name'], player_team),
+                "stat_focus": stat_focus,
+                "line": params.get('line'),
+                "opp_rating": get_matchup_rating(opponent) if opponent and opponent != "Unknown" else {},
+                "spread": game_match.get("game", {}).get("spread"),
+                "total": game_match.get("game", {}).get("total"),
+                "vacuum_text": player_vacuum,
+            }
 
             analysis_input = f"""
 PLAYER: {params['name']}
@@ -554,7 +669,7 @@ QUERY: {query}
             with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
-            render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used)
+            render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used, card_data=card_data)
 
             # Save option
             if st.button("💾 Save Analysis"):
@@ -565,7 +680,7 @@ QUERY: {query}
             with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
-            render_analysis_output("", methodology, show_both=False)
+            render_analysis_output("", methodology, show_both=False, card_data=card_data)
 
     # Footer with data sources - Lo-Fi Premium Light
     st.markdown("---")
