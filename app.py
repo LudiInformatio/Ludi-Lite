@@ -669,7 +669,7 @@ QUERY: {query}
             with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
-            render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used, card_data=card_data)
+            render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used)
 
             # Save option
             if st.button("💾 Save Analysis"):
@@ -680,7 +680,15 @@ QUERY: {query}
             with st.spinner("Running Ludi Method analysis..."):
                 methodology = get_claude_analysis(prompt_method, analysis_input, model)
 
-            render_analysis_output("", methodology, show_both=False, card_data=card_data)
+            render_analysis_output("", methodology, show_both=False)
+
+        # Matchup Data expander — below both analysis panels
+        if card_data:
+            with st.expander("Matchup Data", expanded=False):
+                if card_data.get("type") == "game":
+                    render_game_context_card(card_data)
+                elif card_data.get("type") == "player":
+                    render_player_context_card(card_data)
 
     # Footer with data sources - Lo-Fi Premium Light
     st.markdown("---")

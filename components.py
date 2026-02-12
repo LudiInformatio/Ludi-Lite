@@ -4,6 +4,7 @@ Compact data snapshot cards shown between user input and AI analysis panels.
 Design: PropsMadness-inspired editorial layout with gold left-border accent.
 """
 
+import re
 import streamlit as st
 import html
 
@@ -128,17 +129,62 @@ def _prop_row(prop: dict) -> str:
     )
 
 
+def _avg_vs_line_bar(avg: float, line: float, stat: str = "PPG") -> str:
+    """Horizontal bar comparing season average vs prop line.
+    Green fill if avg > line (favors Over), red if avg < line (favors Under).
+    Returns inline HTML or empty string if inputs are invalid."""
+    try:
+        avg_f = float(avg)
+        line_f = float(line)
+    except (ValueError, TypeError):
+        return ""
+    if avg_f <= 0 or line_f <= 0:
+        return ""
+
+    # Scale: bar represents 0 to a reasonable max
+    max_val = max(avg_f, line_f) * 1.4
+    avg_pct = min((avg_f / max_val) * 100, 100)
+    line_pct = min((line_f / max_val) * 100, 100)
+
+    # Color: green if avg clears line, red if under
+    is_over = avg_f >= line_f
+    bar_color = "#4A7C59" if is_over else "#C41E3A"
+    bar_bg = "rgba(74,124,89,0.10)" if is_over else "rgba(196,30,58,0.10)"
+    verdict = "Over" if is_over else "Under"
+    diff = abs(avg_f - line_f)
+
+    return (
+        f'<div style="margin:8px 0 4px 0;">'
+        # Label row: stat + verdict
+        f'<div style="display:flex; justify-content:space-between; align-items:baseline; '
+        f'font-family:Inter,sans-serif; font-size:12px; margin-bottom:4px;">'
+        f'<span style="color:#7B7568;">{html.escape(stat)} — Avg {avg_f:.1f} vs Line {line_f:.1f}</span>'
+        f'<span style="color:{bar_color}; font-weight:600;">{verdict} by {diff:.1f}</span>'
+        f'</div>'
+        # Bar
+        f'<div style="position:relative; height:20px; background:{bar_bg}; '
+        f'border-radius:4px; overflow:hidden;">'
+        # Fill
+        f'<div style="height:100%; width:{avg_pct:.1f}%; background:{bar_color}; '
+        f'border-radius:4px; opacity:0.7;"></div>'
+        # Line marker
+        f'<div style="position:absolute; top:0; left:{line_pct:.1f}%; '
+        f'width:2px; height:100%; background:#1A1A1A;"></div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shared constants for card container style and section label style
 # ---------------------------------------------------------------------------
 
 _CARD_STYLE = (
-    "background:#FFFFFF; "
+    "background:#F9F8F6; "
     "border-left:4px solid #C6A34F; "
     "border-radius:0 12px 12px 0; "
     "padding:20px 24px; "
     "margin:16px 0; "
-    "box-shadow:0 1px 2px rgba(0,0,0,0.04), 0 4px 8px rgba(0,0,0,0.02), 0 12px 24px rgba(0,0,0,0.02);"
 )
 
 _SECTION_LABEL = (
@@ -152,19 +198,25 @@ _DIVIDER = (
 
 
 def _clean_vacuum_text(raw: str) -> str:
-    """Strip the S.A.V.A.G.E. header banners and whitespace from vacuum text,
-    then html-escape the remainder. Returns empty string if nothing useful."""
+    """Strip S.A.V.A.G.E. header banners, escape HTML, and convert markdown
+    bold (**text**) to <strong> tags for rendering inside HTML cards."""
     text = (raw or "").strip()
     if not text:
         return ""
-    # Remove known header banners
     for banner in (
         "=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E. - calculated from Tank01 stats) ===",
         "=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===",
     ):
         text = text.replace(banner, "")
     text = text.strip()
-    return html.escape(text) if text else ""
+    if not text:
+        return ""
+    # Escape HTML first, then convert markdown bold to <strong>
+    escaped = html.escape(text)
+    escaped = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
+    # Convert markdown list items (- text) to bullet points
+    escaped = re.sub(r'^- ', '&bull; ', escaped, flags=re.MULTILINE)
+    return escaped
 
 
 def _build_vacuum_section(vacuum_text: str) -> str:
@@ -399,11 +451,20 @@ def render_player_context_card(data: dict) -> None:
         safe_line = html.escape(str(line))
         pill = _matchup_pill(opp_r)
         pill_part = f" &nbsp;{pill}" if pill else ""
+        # Try to find matching season avg for the bar visual
+        stat_key_map = {"points": "pts", "rebounds": "reb", "assists": "ast",
+                        "pts": "pts", "reb": "reb", "ast": "ast",
+                        "all stats": "pts"}  # default to pts for general queries
+        stat_key = stat_key_map.get(stat_focus.lower(), "pts")
+        avg_val = stats.get(stat_key, "") if stats else ""
+        bar_html = _avg_vs_line_bar(avg_val, line, safe_focus) if avg_val else ""
+
         prop_line_html = (
             f'<div style="{_SECTION_LABEL} margin-bottom:4px;">Prop Line</div>'
             f'<div style="font-family:Inter,sans-serif; font-size:14px; '
             f'color:#1A1A1A; margin-bottom:2px;">'
             f'{safe_focus} Over {safe_line}{pill_part}</div>'
+            f'{bar_html}'
         )
 
     # -- Matchup section (only when no prop line already showed pill) --------
@@ -423,10 +484,14 @@ def render_player_context_card(data: dict) -> None:
         elif opp_r and prop_line_html:
             # Prop line showed the pill already; show a simpler matchup ref
             pass
-        # Spread + total line
+        # Spread + total line (format spread with +/- sign)
         game_parts = []
         if spread is not None:
-            game_parts.append(html.escape(str(spread)))
+            try:
+                spread_val = float(spread)
+                game_parts.append(html.escape(f"{spread_val:+.1f}"))
+            except (ValueError, TypeError):
+                game_parts.append(html.escape(str(spread)))
         if total is not None:
             game_parts.append(f"O/U {html.escape(str(total))}")
         if game_parts:
