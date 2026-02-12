@@ -166,9 +166,9 @@ st.markdown("""
     
     /* Buttons as Cards (Game Cards) */
     div.row-widget.stButton > button {
-        background: #FFFFFF;
-        border: 1px solid rgba(0,0,0,0.03); /* Almost invisible border */
-        box-shadow: var(--shadow-card);
+        background: var(--paper);
+        border: 1px solid #E6E4DD;
+        box-shadow: none;
         border-radius: var(--radius);
         padding: 20px 24px;
         text-align: left;
@@ -177,12 +177,12 @@ st.markdown("""
         height: auto;
         min-height: 90px;
     }
-    
+
     div.row-widget.stButton > button:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
         border-color: var(--gold);
-        background: #FFFFFF;
+        background: var(--paper);
         z-index: 10;
         position: relative;
     }
