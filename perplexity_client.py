@@ -48,6 +48,7 @@ def _get_recency_filter(hours_to_game: int = 24) -> str:
         return "week"   # Advance look: trends, matchup history
 
 
+@st.cache_data(ttl=1800, show_spinner=False)  # 30 min cache
 def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12) -> str:
     """
     Search for real-time context about a game matchup.
@@ -120,6 +121,7 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
         return ""  # Silently fail - don't break the app
 
 
+@st.cache_data(ttl=1800, show_spinner=False)  # 30 min cache
 def search_player_context(player_name: str, opponent: str = "", hours_to_game: int = 12) -> str:
     """
     Search for real-time context about a specific player.
@@ -192,6 +194,7 @@ def search_player_context(player_name: str, opponent: str = "", hours_to_game: i
         return ""
 
 
+@st.cache_data(ttl=300, show_spinner=False)  # 5 min cache - needs freshness
 def search_late_news(team_abbr: str) -> str:
     """
     Search for ONLY the most recent news (last hour) for late-breaking info.

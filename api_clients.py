@@ -59,6 +59,7 @@ def get_api_key(key_name: str) -> Optional[str]:
     return None
 
 
+@st.cache_data(ttl=300)  # 5 min cache - saves 10 Odds-API credits per repeat click
 def fetch_player_props(game_id: str) -> dict:
     """
     Fetch player props for a specific game from The-Odds-API.
@@ -240,6 +241,7 @@ def format_props_context(props: dict, max_players: int = 5) -> str:
     return context
 
 
+@st.cache_data(ttl=300)  # 5 min cache - saves 1 Odds-API credit per page refresh
 def fetch_todays_games() -> list:
     """Fetch today's NBA games from The-Odds-API"""
     api_key = get_api_key("ODDS_API_KEY")
