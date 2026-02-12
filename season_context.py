@@ -166,19 +166,20 @@ OFFSEASON MOVES (Summer/Oct 2025) — ESTABLISHED (5+ months on team, fully inte
 - Luka Doncic → LA LAKERS (from Dallas)
 - Deandre Ayton → LA LAKERS (from Portland)
 - Jimmy Butler → GOLDEN STATE (from Miami) — OUT with torn ACL
+- Kristaps Porzingis → ATLANTA (from Boston) — then traded again at deadline to GSW
 - Klay Thompson → DALLAS (from Golden State)
 - Paul George → PHILADELPHIA (from LA Clippers) — currently SUSPENDED
 - DeMar DeRozan → SACRAMENTO (from Chicago)
 - Isaiah Hartenstein → OKLAHOMA CITY (from New York)
 - Dejounte Murray → NEW ORLEANS (from Atlanta)
 
-TRADE DEADLINE (Feb 4-5, 2026) — RECENTLY TRADED (may need 2-3 games to integrate):
+TRADE DEADLINE (Feb 4-5, 2026) — RECENTLY TRADED (season stats reflect OLD team, not new):
 - Anthony Davis → WASHINGTON (from LA Lakers)
 - Trae Young → WASHINGTON (from Atlanta)
 - James Harden → CLEVELAND (from LA Clippers)
 - Darius Garland → LA CLIPPERS (from Cleveland)
 - Nikola Vucevic → BOSTON (from Chicago)
-- Kristaps Porzingis → GOLDEN STATE (from Boston)
+- Kristaps Porzingis → GOLDEN STATE (from Atlanta)
 - Coby White → CHARLOTTE (from Chicago)
 - Ayo Dosunmu → MINNESOTA (from Chicago)
 - Anfernee Simons → CHICAGO (from Portland)
