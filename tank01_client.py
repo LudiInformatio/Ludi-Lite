@@ -70,7 +70,7 @@ def _make_request(endpoint: str, params: dict = None) -> Optional[dict]:
         return None
 
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=3600)
 def get_team_roster(team_abbr: str, include_stats: bool = False) -> List[Dict[str, Any]]:
     """
     Get current roster for a team.
@@ -172,7 +172,7 @@ def get_all_teams_with_rosters() -> Dict[str, List[str]]:
     return teams
 
 
-@st.cache_data(ttl=60)  # Cache for 1 minute (games change more frequently)
+@st.cache_data(ttl=600)
 def get_todays_games() -> List[Dict[str, Any]]:
     """
     Get today's NBA games with details.
@@ -188,7 +188,7 @@ def get_todays_games() -> List[Dict[str, Any]]:
     return data["body"]
 
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=3600)
 def get_depth_chart(team_abbr: str) -> Dict[str, List[str]]:
     """
     Get team depth chart (starting lineup and backups by position).
@@ -241,6 +241,7 @@ def find_player_team(player_name: str, search_teams: list = None) -> Optional[st
     return None
 
 
+@st.cache_data(ttl=900)
 def get_team_injuries(team_abbr: str) -> List[Dict[str, Any]]:
     """
     Get injuries for a specific team from roster data.
@@ -403,7 +404,7 @@ def get_team_recent_record(team_abbr: str, num_games: int = 5) -> Dict[str, Any]
     }
 
 
-@st.cache_data(ttl=3600)  # 1 hour — team stats don't change mid-game
+@st.cache_data(ttl=21600)
 def get_all_team_stats() -> Dict[str, Dict]:
     """
     Fetch team-level stats from Tank01.
@@ -487,3 +488,78 @@ def format_player_context(player_name: str, team_abbr: str = None) -> str:
         context += f"Teammates OUT: {', '.join(out_teammates)} (potential usage boost)\n"
 
     return context
+
+
+@st.cache_data(ttl=300)
+def fetch_betting_odds(game_id: str) -> Dict[str, List[Dict]]:
+    """
+    Fetch betting odds (player props) for a specific game from Tank01.
+    TTL: 5 minutes (300s)
+    
+    Args:
+        game_id: Tank01 game ID
+        
+    Returns:
+        Dictionary with normalized player props:
+        {points: [], rebounds: [], assists: [], threes: [], steals: [], blocks: []}
+    """
+    data = _make_request("getNBABettingOdds", {"gameID": game_id})
+    if not data or "body" not in data:
+        return {}
+    
+    props = {
+        "points": [], "rebounds": [], "assists": [], "threes": [],
+        "steals": [], "blocks": [],
+        "pra": [], "pa": [], "pr": [], "ar": [],
+        "double_double": [], "triple_double": []
+    }
+    
+    body = data["body"]
+    
+    for player_id, player_data in body.items():
+        player_name = player_data.get("longName", player_data.get("espnName", ""))
+        
+        for stat_type, stat_data in player_data.items():
+            if not isinstance(stat_data, dict):
+                continue
+            
+            prop_key = None
+            if stat_type == "pts":
+                prop_key = "points"
+            elif stat_type == "reb":
+                prop_key = "rebounds"
+            elif stat_type == "ast":
+                prop_key = "assists"
+            elif stat_type == "threePt":
+                prop_key = "threes"
+            elif stat_type == "stl":
+                prop_key = "steals"
+            elif stat_type == "blk":
+                prop_key = "blocks"
+            
+            if not prop_key:
+                continue
+            
+            line = stat_data.get("line")
+            over_odds = stat_data.get("over")
+            under_odds = stat_data.get("under")
+            
+            if over_odds is not None:
+                props[prop_key].append({
+                    "player": player_name,
+                    "line": line,
+                    "odds": over_odds,
+                    "type": "Over",
+                    "book": "tank01"
+                })
+            
+            if under_odds is not None:
+                props[prop_key].append({
+                    "player": player_name,
+                    "line": line,
+                    "odds": under_odds,
+                    "type": "Under",
+                    "book": "tank01"
+                })
+    
+    return props

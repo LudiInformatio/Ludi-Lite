@@ -73,7 +73,7 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
     query = f"""
     NBA 2025-26 SEASON: {away_team} vs {home_team} game.
 
-    TRUSTED SOURCES: @underdognba Twitter, ESPN injury report, official team accounts
+    TRUSTED SOURCES: @underdognba Twitter, ESPN injury report, official team accounts, betting community
 
     STATUS KEYWORDS:
     - OUT: "ruled out", "won't play", "suspended", "inactive"
@@ -83,9 +83,10 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
     Return ONLY:
     1. Players OUT/DOUBTFUL/SUSPENDED (name + status)
     2. Recent team form (last 3 games W/L)
-    3. Breaking news from THIS SEASON only
+    3. Sharp money indicators - line movement against public, steam moves, reverse line movement
+    4. Breaking news from THIS SEASON only
 
-    Max 100 words. Bullets only. No old recaps or percentage projections.
+    Max 120 words. Bullets only. No old recaps or percentage projections.
     """
 
     try:
@@ -96,12 +97,14 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-small-128k-online",
+                "model": "sonar",
                 "messages": [
+                    {"role": "system", "content": "You are a sports research assistant for the 2025-26 NBA season. Return ONLY verifiable facts from web sources. Never invent stats, injury statuses, or game outcomes. If you cannot find information, say 'No data found.' Include source names when possible."},
                     {"role": "user", "content": query}
                 ],
                 "max_tokens": 500,
                 "temperature": 0.2,
+                "return_citations": True,
                 # API-level time filtering (more reliable than prompt)
                 "search_recency_filter": recency
             },
@@ -169,12 +172,14 @@ def search_player_context(player_name: str, opponent: str = "", hours_to_game: i
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-small-128k-online",
+                "model": "sonar",
                 "messages": [
+                    {"role": "system", "content": "You are a sports research assistant for the 2025-26 NBA season. Return ONLY verifiable facts from web sources. Never invent stats, injury statuses, or game outcomes. If you cannot find information, say 'No data found.' Include source names when possible."},
                     {"role": "user", "content": query}
                 ],
                 "max_tokens": 400,
                 "temperature": 0.2,
+                "return_citations": True,
                 # API-level time filtering
                 "search_recency_filter": recency
             },
@@ -213,6 +218,8 @@ def search_late_news(team_abbr: str) -> str:
     query = f"""
     NBA {team_abbr} breaking news RIGHT NOW.
 
+    TRUSTED SOURCES: @underdognba Twitter, official team accounts
+
     ONLY return:
     - Lineup changes
     - Late scratches
@@ -229,12 +236,14 @@ def search_late_news(team_abbr: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-small-128k-online",
+                "model": "sonar",
                 "messages": [
+                    {"role": "system", "content": "You are a sports research assistant for the 2025-26 NBA season. Return ONLY verifiable facts from web sources. Never invent stats, injury statuses, or game outcomes. If you cannot find information, say 'No data found.' Include source names when possible."},
                     {"role": "user", "content": query}
                 ],
                 "max_tokens": 200,
                 "temperature": 0.1,
+                "return_citations": True,
                 "search_recency_filter": "hour"  # ONLY last hour
             },
             timeout=10
@@ -252,6 +261,137 @@ def search_late_news(team_abbr: str) -> str:
         return ""
 
 
+@st.cache_data(ttl=1800, show_spinner=False)  # 30 min cache
+def search_social_sentiment(away_team: str, home_team: str) -> str:
+    """
+    Search social media and betting communities for sentiment on this game.
+    Uses sonar-pro model for comprehensive social search.
+
+    Args:
+        away_team: Away team name or abbreviation
+        home_team: Home team name or abbreviation
+
+    Returns:
+        Formatted sentiment analysis with signal labels
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        return ""  # Silently skip if no API key
+
+    query = f"""
+    NBA 2025-26 SEASON: {away_team} @ {home_team} game.
+
+    SEARCH SOURCES:
+    - Twitter/X: @underdognba, NBA Twitter community
+    - Reddit: r/nba, r/sportsbook, r/sportsbetting, r/NBA_Bets
+    - NBA Discord communities
+
+    IDENTIFY AND LABEL:
+    - PUBLIC LEAN: General betting public's preference (which side is popular?)
+    - SHARP SIGNAL: Sharp money indicators, line movement against public
+    - BUZZ: Player buzz, breakout narratives, trending players
+    - CONCERN: Injury concerns, lineup uncertainty, negative sentiment
+    - LATE NEWS: Breaking news affecting this game
+
+    Return ONLY labeled signals (e.g., "PUBLIC LEAN: 65% on Lakers", "SHARP SIGNAL: Line moved toward Warriors").
+    Max 100 words. If no clear signals, say "No strong social signals detected."
+    """
+
+    try:
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "sonar-pro",
+                "messages": [
+                    {"role": "system", "content": "You are a sports research assistant for the 2025-26 NBA season. Return ONLY verifiable facts from web sources. Never invent stats, injury statuses, or game outcomes. If you cannot find information, say 'No data found.' Include source names when possible."},
+                    {"role": "user", "content": query}
+                ],
+                "max_tokens": 400,
+                "temperature": 0.2,
+                "return_citations": True
+            },
+            timeout=15
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content and "no strong social" not in content.lower():
+                return f"\n=== SOCIAL SENTIMENT (Perplexity - Twitter/Reddit) ===\n{content}\n"
+
+        return ""
+
+    except Exception:
+        return ""  # Silently fail - don't break the app
+
+
 def is_perplexity_available() -> bool:
     """Check if Perplexity API is configured"""
     return _get_api_key() is not None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)  # 1 hour cache - refs announced ~9 AM ET
+def search_referee_context(home_team: str, away_team: str) -> str:
+    """
+    Search for referee crew assignments and their pace/foul tendencies.
+    Uses Perplexity's sonar model for web search.
+    
+    Args:
+        home_team: Home team abbreviation
+        away_team: Away team abbreviation
+        
+    Returns:
+        Formatted string with referee crew and tendencies
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        return ""
+    
+    query = f"""
+    NBA referee assignments for tonight's {away_team} @ {home_team} game.
+    
+    TRUSTED SOURCES: official NBA referee assignments page, @RefAnalytics on Twitter, r/sportsbook
+    
+    Return ONLY:
+    1. Crew chief and referees assigned (names)
+    2. Crew pace tendency (fast-paced vs slow-paced games)
+    3. Foul rate tendency (high FT attempts vs low)
+    4. Over/Under tendency for this crew (do games tend to go over or under?)
+    
+    Max 100 words. If no ref info found, say "Referee assignments not yet available."
+    """
+    
+    try:
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "You are a sports research assistant for NBA officiating. Return ONLY verifiable facts from web sources. Include referee names and their historical tendencies."},
+                    {"role": "user", "content": query}
+                ],
+                "max_tokens": 400,
+                "temperature": 0.2,
+                "return_citations": True
+            },
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content and "not yet available" not in content.lower():
+                return f"\n=== REFEREE CONTEXT (Perplexity) ===\n{content}\n"
+        
+        return ""
+    
+    except Exception:
+        return ""

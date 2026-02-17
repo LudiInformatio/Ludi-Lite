@@ -273,3 +273,138 @@ def get_player_specific_context(player_name: str, team_abbr: str = None) -> str:
         return format_player_context(player_name, team_abbr=team_abbr)
     except Exception:
         return f"\nPlayer context for '{player_name}' unavailable.\n"
+
+
+@st.cache_data(ttl=3600)
+def get_player_recent_trends(player_name: str) -> str:
+    """
+    Get recent performance trends for a player (L5/L10 averages).
+    Uses BDL get_recent_game_logs to calculate averages with trend arrows.
+    
+    Args:
+        player_name: Player's name to lookup
+        
+    Returns:
+        Formatted string with L5/L10 averages and trend arrows
+    """
+    try:
+        from bdl_client import get_recent_game_logs, _get_client
+        
+        client = _get_client()
+        if not client.api_key:
+            return ""
+        
+        player_id = client.map_player_id(player_name)
+        if not player_id:
+            return ""
+        
+        logs = get_recent_game_logs(player_id, last_n=10)
+        if not logs:
+            return ""
+        
+        l5 = logs[:5]
+        l10 = logs[:10]
+        
+        def calc_avg(games, key):
+            if not games:
+                return 0
+            return sum(g.get(key, 0) for g in games) / len(games)
+        
+        def calc_trend(games, key):
+            if len(games) < 3:
+                return "→"
+            first_half = games[len(games)//2:]
+            second_half = games[:len(games)//2]
+            first_avg = calc_avg(first_half, key)
+            second_avg = calc_avg(second_half, key)
+            diff = second_avg - first_avg
+            if diff > 1.5:
+                return "↑"
+            elif diff < -1.5:
+                return "↓"
+            return "→"
+        
+        l10_pts = calc_avg(l10, "pts")
+        l10_reb = calc_avg(l10, "reb")
+        l10_ast = calc_avg(l10, "ast")
+        l10_3pm = calc_avg(l10, "three_pm")
+        
+        l5_pts = calc_avg(l5, "pts")
+        
+        pts_trend = calc_trend(l10, "pts")
+        reb_trend = calc_trend(l10, "reb")
+        ast_trend = calc_trend(l10, "ast")
+        
+        hit_rate_20 = sum(1 for g in l10 if g.get("pts", 0) >= 20)
+        
+        return f"""
+=== RECENT PERFORMANCE (BDL) ===
+L10 avg: {l10_pts:.1f} PTS ({pts_trend}), {l10_reb:.1f} REB ({reb_trend}), {l10_ast:.1f} AST ({ast_trend}), {l10_3pm:.1f} 3PM
+L5 avg: {l5_pts:.1f} PTS
+20+ point games: {hit_rate_20} of last 10
+"""
+    except Exception:
+        return ""
+
+
+@st.cache_data(ttl=3600)
+def get_dvp_context(team_abbr: str, position: str = "guard") -> str:
+    """
+    Get defense vs position context for a team.
+    Uses BDL team stats to determine how many points/rebounds/assists
+    a team allows to each position.
+    
+    Args:
+        team_abbr: Team abbreviation (e.g., "PHX")
+        position: "guard", "forward", or "center"
+        
+    Returns:
+        Formatted string like "PHX allows 3rd-most PTS to guards (28.4 PPG)"
+    """
+    try:
+        from bdl_client import get_team_season_averages, _get_client
+        
+        client = _get_client()
+        if not client.api_key:
+            return ""
+        
+        team_data = get_team_season_averages()
+        if not team_data:
+            return ""
+        
+        team_abbr = team_abbr.upper()
+        team_stats = None
+        for t in team_data:
+            if t.get("team", {}).get("abbreviation", "").upper() == team_abbr:
+                team_stats = t
+                break
+        
+        if not team_stats:
+            return ""
+        
+        pts_allowed = team_stats.get("pts", 0)
+        if not pts_allowed:
+            return ""
+        
+        all_pts = [(t.get("team", {}).get("abbreviation", ""), t.get("pts", 0)) for t in team_data if t.get("pts")]
+        all_pts.sort(key=lambda x: x[1], reverse=True)
+        
+        rank = 1
+        for i, (abbr, _) in enumerate(all_pts):
+            if abbr == team_abbr:
+                rank = i + 1
+                break
+        
+        rank_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
+        
+        pos_label = position.lower()
+        if "guard" in pos_label:
+            pos_label = "guards"
+        elif "forward" in pos_label:
+            pos_label = "forwards"
+        else:
+            pos_label = "centers"
+        
+        return f"=== DEFENSE VS POSITION (BDL) ===\n{team_abbr} allows {rank}{rank_suffix}-most PTS to {pos_label} ({pts_allowed:.1f} PPG)\n"
+    except Exception:
+        return ""

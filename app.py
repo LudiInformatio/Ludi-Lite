@@ -16,6 +16,7 @@ from api_clients import (
     fetch_player_props,
     format_props_context,
     get_claude_analysis,
+    get_line_movement_context,
 )
 
 # Use dynamic prompts for fresh injury data on each request
@@ -25,17 +26,29 @@ from season_context import (
     get_offense_scheme,
     get_game_specific_context,
     get_player_specific_context,
+    get_player_recent_trends,
+    get_dvp_context,
 )
 from query_parser import parse_chat_query, match_player_to_game
 # Optional Perplexity integration for Freestyle
 try:
-    from perplexity_client import search_game_context, search_player_context, search_late_news, is_perplexity_available
+    from perplexity_client import search_game_context, search_player_context, search_late_news, search_social_sentiment, search_referee_context, is_perplexity_available
     PERPLEXITY_ENABLED = is_perplexity_available()
 except ImportError:
     PERPLEXITY_ENABLED = False
     def search_game_context(*args, **kwargs): return ""
     def search_player_context(*args, **kwargs): return ""
     def search_late_news(*args): return ""
+    def search_social_sentiment(*args, **kwargs): return ""
+    def search_referee_context(*args, **kwargs): return ""
+
+# Optional NBA.com API for game officials
+try:
+    from nba_api_client import get_game_officials, is_nba_api_available
+    NBA_API_ENABLED = is_nba_api_available()
+except ImportError:
+    NBA_API_ENABLED = False
+    def get_game_officials(*args, **kwargs): return ""
 
 # Team name normalization (handles Odds-API vs Tank01 naming differences)
 from team_mapping import normalize_team, get_full_name
@@ -402,6 +415,10 @@ def main():
 
     # Section 1: Today's Games (Cards)
     games = fetch_todays_games()
+    
+    # Get line movement context for Claude (track opening vs current lines)
+    line_movement_ctx = get_line_movement_context(games) if games else ""
+    
     selected_game = render_game_cards(games)
 
     st.divider()
@@ -458,6 +475,19 @@ def main():
         away_vacuum = _get_vacuum_context(selected_game['away'], game_total)
         if home_vacuum or away_vacuum:
             vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E. - calculated from Tank01 stats) ===\n{home_vacuum}{away_vacuum}"
+        
+        # Get referee context (Perplexity primary, NBA.com as fallback)
+        referee_ctx = ""
+        if PERPLEXITY_ENABLED:
+            try:
+                referee_ctx = search_referee_context(selected_game['home'], selected_game['away'])
+            except Exception:
+                pass
+        if not referee_ctx and NBA_API_ENABLED and selected_game.get('id'):
+            try:
+                referee_ctx = get_game_officials(selected_game['id'])
+            except Exception:
+                pass
 
         # Build visual card data (not passed to Claude)
         card_data = {
@@ -490,6 +520,8 @@ TIME: {selected_game.get('time') or 'TBD'}
 
 {live_context}
 {props_context}
+{line_movement_ctx}
+{referee_ctx}
 {vacuum_text}
 """
 
@@ -504,6 +536,14 @@ TIME: {selected_game.get('time') or 'TBD'}
             away_v = _get_vacuum_context(params['away'])
             if home_v or away_v:
                 vacuum_text = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{home_v}{away_v}"
+            
+            # Get referee context for chat-based game queries
+            referee_ctx = ""
+            if PERPLEXITY_ENABLED:
+                try:
+                    referee_ctx = search_referee_context(params['home'], params['away'])
+                except Exception:
+                    pass
 
             analysis_input = f"""
 GAME: {params['away']} @ {params['home']}
@@ -513,6 +553,8 @@ GAME: {params['away']} @ {params['home']}
 {params['home']} Offense: {get_offense_scheme(params['home'])}
 
 {live_context}
+{line_movement_ctx}
+{referee_ctx}
 {vacuum_text}
 """
 
@@ -560,6 +602,21 @@ TIME: {g.get('time', 'TBD')}
                 player_vacuum = _get_vacuum_context(player_team, g_total)
                 if player_vacuum:
                     player_vacuum = f"\n=== USAGE VACUUM ANALYSIS (S.A.V.A.G.E.) ===\n{player_vacuum}"
+            
+            # Get player recent trends (BDL game logs)
+            player_trends = ""
+            try:
+                player_trends = get_player_recent_trends(params['name'])
+            except Exception:
+                pass
+            
+            # Get DVP context for opponent
+            dvp_context = ""
+            if opponent and opponent != "Unknown":
+                try:
+                    dvp_context = get_dvp_context(opponent, "guard")
+                except Exception:
+                    pass
 
             # Build visual card data
             card_data = {
@@ -588,6 +645,8 @@ QUERY: {query}
 
 {game_context}
 {player_context}
+{player_trends}
+{dvp_context}
 {player_vacuum}
 """
             query_type = "player"
@@ -645,6 +704,14 @@ QUERY: {query}
                         late += search_late_news(selected_game['away'])
                         pplx_context = (pplx_context or "") + late
 
+                    # Add social sentiment (Twitter/Reddit betting community signals)
+                    sentiment = search_social_sentiment(
+                        selected_game.get('away_full', selected_game['away']),
+                        selected_game.get('home_full', selected_game['home'])
+                    )
+                    if sentiment:
+                        pplx_context = (pplx_context or "") + sentiment
+
                     if pplx_context:
                         freestyle_input = analysis_input + pplx_context
                         perplexity_used = True
@@ -664,10 +731,10 @@ QUERY: {query}
         if analyze_both or selected_game:
             spinner_text = "Running Freestyle + Perplexity..." if perplexity_used else "Running Freestyle analysis..."
             with st.spinner(spinner_text):
-                freestyle = get_claude_analysis(prompt_freestyle, freestyle_input, model)
+                freestyle = get_claude_analysis(prompt_freestyle, freestyle_input, model, temperature=0.3)
 
             with st.spinner("Running Ludi Method analysis..."):
-                methodology = get_claude_analysis(prompt_method, analysis_input, model)
+                methodology = get_claude_analysis(prompt_method, analysis_input, model, temperature=0.1)
 
             render_analysis_output(freestyle, methodology, show_both=True, perplexity_used=perplexity_used)
 
@@ -678,7 +745,7 @@ QUERY: {query}
 
         elif analyze_ludi:
             with st.spinner("Running Ludi Method analysis..."):
-                methodology = get_claude_analysis(prompt_method, analysis_input, model)
+                methodology = get_claude_analysis(prompt_method, analysis_input, model, temperature=0.1)
 
             render_analysis_output("", methodology, show_both=False)
 

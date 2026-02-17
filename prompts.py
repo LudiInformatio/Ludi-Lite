@@ -38,6 +38,26 @@ RULES:
 4. Say "I don't know" when data is limited
 5. **KEEP IT BRIEF** - bullet points, not essays
 
+ANALYSIS PROTOCOL (follow in order):
+1. VERIFY: Cross-check injury list
+2. GROUND: Cite source ("per BDL", "per Tank01", "per Odds-API")
+3. REASON: Apply factors step-by-step
+4. CONCLUDE: Only claims supported by steps 1-3
+5. FLAG: Note uncertainty with "Unverified"
+
+DATA CITATION RULES:
+- Stats = "Season avg (BDL): X"
+- Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
+- Odds = "Line (Odds-API/BDL): -4.5"
+- News = "Per Perplexity: [source]"
+- IF NO DATA: Say "Data not available" — DO NOT INVENT
+
+BEFORE SUBMITTING, verify:
+- No OUT/SUSPENDED players mentioned as active
+- No stats cited without a data source
+- No references to prior seasons rosters
+- All numbers match the injected data above
+
 === OUTPUT FORMAT (FOLLOW EXACTLY) ===
 
 ## [AWAY] @ [HOME]
@@ -72,6 +92,26 @@ LUDI_METHOD_PROMPT_BASE = f"""
 Apply S.A.V.A.G.E. methodology to this game. **OUTPUT MUST BE BRIEF** - card format, not essays.
 
 CRITICAL: Check the injury report above. NEVER include OUT/SUSPENDED players in analysis.
+
+ANALYSIS PROTOCOL (follow in order):
+1. VERIFY: Cross-check injury list
+2. GROUND: Cite source ("per BDL", "per Tank01", "per Odds-API")
+3. REASON: Apply factors step-by-step
+4. CONCLUDE: Only claims supported by steps 1-3
+5. FLAG: Note uncertainty with "Unverified"
+
+DATA CITATION RULES:
+- Stats = "Season avg (BDL): X"
+- Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
+- Odds = "Line (Odds-API/BDL): -4.5"
+- News = "Per Perplexity: [source]"
+- IF NO DATA: Say "Data not available" — DO NOT INVENT
+
+BEFORE SUBMITTING, verify:
+- No OUT/SUSPENDED players mentioned as active
+- No stats cited without a data source
+- No references to prior seasons rosters
+- All numbers match the injected data above
 
 === S.A.V.A.G.E. FACTORS TO APPLY ===
 
@@ -140,6 +180,26 @@ Analyze this player prop using S.A.V.A.G.E. methodology.
 
 FIRST: Check if this player is on the injury list above.
 If player is OUT/SUSPENDED/DOUBTFUL, say so immediately and do NOT analyze further.
+
+ANALYSIS PROTOCOL (follow in order):
+1. VERIFY: Cross-check injury list
+2. GROUND: Cite source ("per BDL", "per Tank01", "per Odds-API")
+3. REASON: Apply factors step-by-step
+4. CONCLUDE: Only claims supported by steps 1-3
+5. FLAG: Note uncertainty with "Unverified"
+
+DATA CITATION RULES:
+- Stats = "Season avg (BDL): X"
+- Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
+- Odds = "Line (Odds-API/BDL): -4.5"
+- News = "Per Perplexity: [source]"
+- IF NO DATA: Say "Data not available" — DO NOT INVENT
+
+BEFORE SUBMITTING, verify:
+- No OUT/SUSPENDED players mentioned as active
+- No stats cited without a data source
+- No references to prior seasons rosters
+- All numbers match the injected data above
 
 === S.A.V.A.G.E. FACTORS ===
 1. Archetype vs opponent defense scheme
