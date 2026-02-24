@@ -58,7 +58,7 @@ streamlit run app.py
    In Streamlit Cloud → App Settings → Secrets:
    ```toml
    # Required
-   ANTHROPIC_API_KEY = "sk-ant-api03-..."
+   ANTHROPIC_API_KEY = "your-anthropic-api-key"
 
    # Recommended (live data)
    TANK01_KEY = "your-rapidapi-key"        # Rosters, depth charts, box scores
