@@ -64,4 +64,6 @@ Ludi-Lite/
 *.md
 !README.md
 !CLAUDE.md
+!best-practices/**/*.md
+!best-practices/README.md
 

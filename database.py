@@ -38,6 +38,57 @@ def init_db():
         )
     """)
 
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS player_injuries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_name TEXT NOT NULL,
+            team TEXT,
+            status TEXT,
+            injury_type TEXT,
+            source TEXT,
+            description TEXT,
+            snapshot_time TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS canonical_teams (
+            standard_abbr TEXT PRIMARY KEY,
+            bdl_abbr TEXT,
+            tank01_abbr TEXT,
+            espn_id INTEGER,
+            full_name TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS canonical_players (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            name_normalized TEXT NOT NULL,
+            name_crosswalk TEXT NOT NULL,
+            bdl_id INTEGER,
+            tank01_id TEXT,
+            tank01_aliases TEXT DEFAULT '[]',
+            sportsdata_id TEXT,
+            dk_player_id TEXT,
+            fd_player_id TEXT,
+            current_team TEXT,
+            is_active INTEGER DEFAULT 1,
+            synced_at TEXT
+        )
+    """)
+
+    c.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_players_bdl ON canonical_players(bdl_id) WHERE bdl_id IS NOT NULL
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_canonical_players_norm ON canonical_players(name_normalized)
+    """)
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_canonical_players_crosswalk ON canonical_players(name_crosswalk)
+    """)
+
     conn.commit()
     conn.close()
 

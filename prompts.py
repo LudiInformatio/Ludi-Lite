@@ -49,7 +49,7 @@ DATA CITATION RULES:
 - Stats = "Season avg (BDL): X"
 - Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
 - Odds = "Line (Odds-API/BDL): -4.5"
-- News = "Per Perplexity: [source]"
+- News = "Per RSS (Rotowire/RealGM)" if available, else "Per Perplexity: [source]"
 - IF NO DATA: Say "Data not available" — DO NOT INVENT
 
 BEFORE SUBMITTING, verify:
@@ -104,7 +104,7 @@ DATA CITATION RULES:
 - Stats = "Season avg (BDL): X"
 - Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
 - Odds = "Line (Odds-API/BDL): -4.5"
-- News = "Per Perplexity: [source]"
+- News = "Per RSS (Rotowire/RealGM)" if available, else "Per Perplexity: [source]"
 - IF NO DATA: Say "Data not available" — DO NOT INVENT
 
 BEFORE SUBMITTING, verify:
@@ -192,7 +192,7 @@ DATA CITATION RULES:
 - Stats = "Season avg (BDL): X"
 - Injuries = "Per BDL injury report: OUT" (primary) or "Per Tank01 roster" (fallback)
 - Odds = "Line (Odds-API/BDL): -4.5"
-- News = "Per Perplexity: [source]"
+- News = "Per RSS (Rotowire/RealGM)" if available, else "Per Perplexity: [source]"
 - IF NO DATA: Say "Data not available" — DO NOT INVENT
 
 BEFORE SUBMITTING, verify:

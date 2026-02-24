@@ -7,6 +7,8 @@ Uses search_recency_filter for time-bounded searches:
 - "hour": Last 60 minutes (pre-game, late scratches)
 - "day": Last 24 hours (game day news)
 - "week": Last 7 days (trends, matchup history)
+
+Also includes RSS feed integration for Rotowire and RealGM news.
 """
 
 import requests
@@ -14,6 +16,12 @@ import streamlit as st
 from typing import Optional
 from datetime import datetime
 import pytz
+
+try:
+    import feedparser
+    FEEDPARSER_AVAILABLE = True
+except ImportError:
+    FEEDPARSER_AVAILABLE = False
 
 
 def _get_api_key() -> Optional[str]:
@@ -128,16 +136,20 @@ def search_game_context(away_team: str, home_team: str, hours_to_game: int = 12)
 def search_player_context(player_name: str, opponent: str = "", hours_to_game: int = 12) -> str:
     """
     Search for real-time context about a specific player.
-    Uses Perplexity's search_recency_filter for time-bounded results.
-
+    Uses RSS feeds (Rotowire, RealGM) first. Falls back to Perplexity if no RSS news.
+    
     Args:
         player_name: Player's name
         opponent: Optional opponent team
         hours_to_game: Hours until tipoff (affects recency filter)
-
+        
     Returns:
         Formatted context string with recent performance and news
     """
+    rss_news = get_rss_news(player_name)
+    if rss_news:
+        return f"\n{rss_news}\n"
+    
     api_key = _get_api_key()
     if not api_key:
         return ""
@@ -395,3 +407,241 @@ def search_referee_context(home_team: str, away_team: str) -> str:
     
     except Exception:
         return ""
+
+
+RSS_CACHE: dict = {}
+RSS_CACHE_TTL = 20 * 60  # 20 minutes
+
+# Action words used to detect the player-name boundary in RealGM headlines.
+# Words that appear BEFORE the first action word are treated as the player name.
+_REALGM_ACTION_WORDS = {
+    "out", "injured", "questionable", "doubtful", "probable",
+    "listed", "miss", "misses", "missing", "return", "returns",
+    "returned", "activated", "placed", "undergoes", "underwent",
+    "undergo", "suffered", "suffers", "diagnosed", "shut",
+    "leaves", "left", "plans", "pushes",
+}
+
+# Reject RealGM headline if name candidate contains any of these —
+# means the headline is about a team/concept, not a specific player.
+_REALGM_TEAM_WORDS = {
+    "nba", "trade", "deal", "contract", "draft", "free agency",
+    "report", "rumors", "update", "preview", "analysis",
+    "lakers", "celtics", "warriors", "nets", "knicks", "heat",
+    "bucks", "suns", "nuggets", "clippers", "jazz", "hawks",
+    "sixers", "cavaliers", "raptors", "bulls", "pistons",
+    "pacers", "magic", "hornets", "grizzlies", "pelicans",
+    "spurs", "mavericks", "rockets", "thunder", "blazers",
+    "kings", "wolves", "wizards",
+}
+
+# Keywords for classifying headline injury severity
+_OUT_KEYWORDS = [
+    "out ", "out.", "won't play", "will not play", "not expected to play",
+    "season-ending", "season ending", "surgery", "shut down",
+    "diagnosed with", "suffered", "suffers", "leaves game", "left the game",
+    "placed on", "inactive",
+]
+_DOUBTFUL_KEYWORDS = [
+    "doubtful", "unlikely", "iffy",
+    "undergo imaging", "undergo an mri", "undergo mri",
+]
+_GTD_KEYWORDS = [
+    "questionable", "game-time", "day-to-day", "limited", "probable",
+    "return", "activated",
+]
+
+# Lazy-loaded canonical NBA player name set — populated once per process lifetime
+_canonical_names: Optional[set] = None
+
+
+def _parse_rss_date(date_str: str) -> Optional[datetime]:
+    """Parse RSS date string to datetime."""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str[:25], "%a, %d %b %Y %H:%M:%S")
+    except Exception:
+        try:
+            return datetime.strptime(date_str[:25], "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            return None
+
+
+def _is_within_24_hours(pub_date: str) -> bool:
+    """Check if RSS entry is within last 24 hours."""
+    parsed = _parse_rss_date(pub_date)
+    if not parsed:
+        return True
+    age = datetime.now() - parsed
+    return age.total_seconds() < 86400
+
+
+def _fetch_rss_feed(url: str, force: bool = False) -> list:
+    """Fetch and parse RSS feed with simple caching."""
+    cache_key = url
+    
+    if not force and cache_key in RSS_CACHE:
+        cached_time, cached_data = RSS_CACHE[cache_key]
+        age = (datetime.now() - cached_time).total_seconds()
+        if age < RSS_CACHE_TTL:
+            return cached_data
+    
+    if not FEEDPARSER_AVAILABLE:
+        return []
+    
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return []
+        
+        feed = feedparser.parse(response.content)
+        entries = []
+        
+        for entry in feed.entries:
+            if not _is_within_24_hours(getattr(entry, "published", "")):
+                continue
+            
+            title = getattr(entry, "title", "")
+            description = getattr(entry, "description", "")
+            entries.append({
+                "title": title,
+                "description": description,
+                "published": getattr(entry, "published", ""),
+            })
+        
+        RSS_CACHE[cache_key] = (datetime.now(), entries)
+        return entries
+    
+    except Exception:
+        return []
+
+
+def _load_canonical_names() -> set:
+    """Lazy-load normalized NBA player names from canonical DB for RSS validation.
+    Returns empty set if canonical.py or DB is unavailable (graceful fallback)."""
+    global _canonical_names
+    if _canonical_names is not None:
+        return _canonical_names
+    try:
+        from canonical import DB_PATH
+        import sqlite3
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT name_normalized FROM canonical_players WHERE is_active = 1")
+        _canonical_names = {row[0] for row in c.fetchall()}
+        conn.close()
+    except Exception:
+        _canonical_names = set()
+    return _canonical_names
+
+
+def _extract_player_from_realgm_title(title: str) -> Optional[str]:
+    """Extract the player name from a RealGM headline using action word boundary detection.
+    Returns words before the first action verb as the player name, or None if not found."""
+    words = title.lower().split()
+    for i, word in enumerate(words):
+        clean_word = word.strip(".,;:")
+        if clean_word in _REALGM_ACTION_WORDS:
+            name_words = words[:i]
+            name_candidate = " ".join(name_words).strip(".,;: ")
+            if len(name_words) < 2:
+                return None  # single word isn't a full player name
+            if any(tw in name_candidate for tw in _REALGM_TEAM_WORDS):
+                return None  # team/concept word — not a player headline
+            return name_candidate.title()
+    return None  # no action word found
+
+
+def _classify_rss_headline(title: str) -> Optional[str]:
+    """Classify an RSS headline into an injury status string.
+    Returns 'OUT', 'DOUBTFUL', 'GTD', or None."""
+    t = title.lower()
+    if any(k in t for k in _OUT_KEYWORDS):
+        return "OUT"
+    if any(k in t for k in _DOUBTFUL_KEYWORDS):
+        return "DOUBTFUL"
+    if any(k in t for k in _GTD_KEYWORDS):
+        return "GTD"
+    return None
+
+
+def get_rss_news(player_name: str) -> str:
+    """
+    Fetch Rotowire and RealGM RSS news for a player.
+    Filters to last 24 hours only.
+    Cache 20 minutes per player.
+    """
+    if not FEEDPARSER_AVAILABLE:
+        return ""
+    
+    cache_key = f"rss_{player_name.lower()}"
+    if cache_key in RSS_CACHE:
+        cached_time, cached_result = RSS_CACHE[cache_key]
+        age = (datetime.now() - cached_time).total_seconds()
+        if age < RSS_CACHE_TTL:
+            return cached_result
+    
+    roto_url = "https://www.rotowire.com/rss/news.php?sport=NBA"
+    realgm_url = "https://basketball.realgm.com/rss/wiretap/0/0.xml"
+    
+    clean_name = player_name.lower().strip()
+    news_items = []
+    
+    roto_entries = _fetch_rss_feed(roto_url)
+    for entry in roto_entries:
+        title = entry.get("title", "")
+        if clean_name in title.lower():
+            news_items.append({
+                "source": "RotoWire",
+                "title": title,
+                "description": entry.get("description", ""),
+            })
+    
+    realgm_entries = _fetch_rss_feed(realgm_url)
+    canonical_names = _load_canonical_names()
+    for entry in realgm_entries:
+        title = entry.get("title", "")
+        extracted = _extract_player_from_realgm_title(title)
+        if extracted is None:
+            continue  # headline isn't about a specific player
+        # Validate against canonical NBA roster when available
+        if canonical_names:
+            try:
+                from canonical import normalize_name
+                if normalize_name(extracted) not in canonical_names:
+                    continue  # not a real NBA player
+            except Exception:
+                pass
+        if clean_name not in extracted.lower():
+            continue  # not the player we're looking for
+        status = _classify_rss_headline(title)
+        news_items.append({
+            "source": "RealGM",
+            "title": title,
+            "description": entry.get("description", ""),
+            "status": status,
+        })
+
+    if not news_items:
+        result = ""
+    else:
+        lines = ["=== RSS NEWS (Last 24h) ==="]
+        for item in news_items[:5]:
+            status_tag = f"[{item['status']}] " if item.get("status") else ""
+            lines.append(f"[{item['source']}] {status_tag}{item['title']}")
+            if item.get("description"):
+                desc = item["description"]
+                if len(desc) > 150:
+                    desc = desc[:150] + "..."
+                lines.append(f"  {desc}")
+        result = "\n".join(lines)
+    
+    RSS_CACHE[cache_key] = (datetime.now(), result)
+    return result
+
+
+def is_rss_available() -> bool:
+    """Check if RSS feeds are available."""
+    return FEEDPARSER_AVAILABLE

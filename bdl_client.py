@@ -224,11 +224,14 @@ class BDLClient:
         if not player_id:
             return []
         
-        data = _self.get_stats(player_ids=[player_id])
+        data = _self.get_stats(player_ids=[player_id], season=2025)
         games = data.get("data", [])
         if not games:
             return []
-        
+
+        # Sort newest-first so [:last_n] returns most recent games
+        games = sorted(games, key=lambda x: x.get("game", {}).get("date", ""), reverse=True)
+
         logs = []
         for game in games[:last_n]:
             team = game.get("team", {})
@@ -236,6 +239,7 @@ class BDLClient:
             
             log_entry = {
                 "date": game_info.get("date", "")[:10] if game_info.get("date") else "",
+                "team": game.get("team", {}).get("abbreviation", ""),
                 "opponent": game.get("opponent_team", {}).get("abbreviation", ""),
                 "pts": game.get("pts", 0),
                 "reb": game.get("reb", 0),
@@ -335,8 +339,19 @@ class BDLClient:
         return data.get("data", [])
 
     def map_player_id(self, name: str) -> Optional[int]:
-        """Resolve player name to BDL ID."""
+        """Resolve player name to BDL ID. Checks canonical DB first, API search as fallback."""
+        try:
+            from canonical import get_bdl_id
+            canonical_bdl_id = get_bdl_id(name)
+            if canonical_bdl_id:
+                return canonical_bdl_id
+        except Exception:
+            pass
+
         candidates = self.search_player(name)
+        if not candidates:
+            last_name = name.split()[-1]
+            candidates = self.search_player(last_name)
         for p in candidates:
             full = f"{p['first_name']} {p['last_name']}"
             if full.lower() == name.lower():

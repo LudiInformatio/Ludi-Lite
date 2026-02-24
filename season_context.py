@@ -6,6 +6,8 @@ Updated: February 5, 2026
 Now uses LIVE data from Tank01 API with static fallbacks.
 """
 
+import streamlit as st
+
 CURRENT_SEASON = "2025-26"
 SEASON_START_DATE = "2025-10-22"
 
@@ -82,6 +84,8 @@ def get_live_roster_context() -> str:
 
     Why roster endpoint: getNBAInjuryList only returns playerID (no team/name).
     getNBATeamRoster includes injury data per player WITH name and team.
+    
+    Also integrates ESPN suspensions as a data source.
     """
     try:
         from tank01_client import get_todays_games, get_team_roster
@@ -102,7 +106,17 @@ def get_live_roster_context() -> str:
         game_time_decisions = []
         teams_checked = 0
 
-        # Add known suspensions for tonight's teams (Tank01 removes these from rosters)
+        # Add ESPN suspensions (more current than static list)
+        try:
+            from espn_client import get_suspensions
+            espn_suspensions = get_suspensions()
+            for susp in espn_suspensions:
+                if susp.get("team") in teams_tonight:
+                    not_playing.append(f"- {susp['player_name']} ({susp['team']}): {susp['status']} - {susp.get('description', 'Suspended')}")
+        except Exception:
+            pass
+
+        # Add known suspensions for tonight's teams (static fallback)
         for susp in KNOWN_SUSPENSIONS:
             if susp["team"] in teams_tonight:
                 not_playing.append(f"- {susp['name']} ({susp['team']}): {susp['status']} - {susp['description']}")

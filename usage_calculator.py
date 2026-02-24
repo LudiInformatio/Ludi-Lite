@@ -10,7 +10,96 @@ v2 — Smart vacuum detection:
 """
 
 from typing import Dict, List, Optional
+from datetime import datetime
 from tank01_client import get_team_roster
+
+
+def detect_trade_and_get_stats(player_name: str) -> Dict:
+    """
+    Detect if player was traded and get stats for their current team.
+    
+    Uses BDL game logs to detect team changes. If player has played for
+    2+ teams in recent games, they were traded. Filters to most recent
+    team's games to get accurate post-trade averages.
+    
+    Returns:
+        {
+            "traded": True/False,
+            "no_data": True/False,
+            "teams": ["LAL", "MIL"],  # if traded
+            "recent_team": "MIL",       # current team
+            "avg_pts": 15.2,           # post-trade average
+            "avg_reb": 5.1,
+            "avg_ast": 3.4,
+            "games_played": 8
+        }
+    """
+    try:
+        from bdl_client import _get_client, get_recent_game_logs
+        
+        client = _get_client()
+        if not client.api_key:
+            return {"traded": False, "no_data": False}
+        
+        player_id = client.map_player_id(player_name)
+        if not player_id:
+            return {"traded": False, "no_data": True}
+        
+        logs = get_recent_game_logs(player_id, last_n=30)
+        if not logs:
+            return {"traded": False, "no_data": True}
+        
+        cutoff_date = "2026-01-15"
+        recent_logs = [g for g in logs if g.get("date", "") >= cutoff_date]
+        if not recent_logs:
+            recent_logs = logs[:10]
+        
+        teams = list(set(g.get("team", "") for g in recent_logs if g.get("team")))
+        teams = [t for t in teams if t]
+
+        if len(teams) < 2:
+            # Game logs show one team — but player may have been traded and not played yet.
+            # Cross-check BDL player record: if current team differs from log team → traded + injured.
+            log_team = teams[0] if teams else ""
+            try:
+                current_player = client.get_player_by_id(player_id)
+                current_team = (current_player.get("team") or {}).get("abbreviation", "")
+                if current_team and log_team and current_team != log_team:
+                    return {"traded": True, "no_data": True,
+                            "teams": [log_team, current_team], "recent_team": current_team,
+                            "note": "traded_not_played"}
+            except Exception:
+                pass
+            return {"traded": False, "no_data": False, "teams": teams}
+
+        # Find most recent team by date (logs already sorted newest-first)
+        most_recent_team = next(
+            (g.get("team") for g in recent_logs if g.get("team")), ""
+        )
+        if not most_recent_team:
+            return {"traded": True, "no_data": True}
+        
+        team_logs = [g for g in recent_logs if g.get("team") == most_recent_team]
+        if not team_logs:
+            return {"traded": True, "no_data": True}
+        
+        def safe_avg(key):
+            values = [g.get(key, 0) for g in team_logs if g.get(key) is not None]
+            return sum(values) / len(values) if values else 0
+        
+        return {
+            "traded": True,
+            "no_data": False,
+            "teams": teams,
+            "recent_team": most_recent_team,
+            "avg_pts": round(safe_avg("pts"), 1),
+            "avg_reb": round(safe_avg("reb"), 1),
+            "avg_ast": round(safe_avg("ast"), 1),
+            "games_played": len(team_logs)
+        }
+    
+    except Exception:
+        return {"traded": False, "no_data": False}
 
 
 # --- Core adjustment factors (from Ludi-Bot Module E) ---
@@ -76,20 +165,25 @@ def _classify_vacuum(
     injury = out_player.get('injury', {})
     injury_desc = (injury.get('description') or '').lower()
 
-    # --- Check 1: Trade deadline player ---
-    # Season stats from Tank01 are cross-team (include old team production).
-    # A player traded Feb 4-5 has AT MOST a few games for the new team,
-    # but their PPG/RPG/APG/MPG are dominated by old-team data.
-    # Always skip — we can't trust the numbers for vacuum analysis.
-    overrides = _get_trade_overrides()
-    for trade_name in overrides:
-        if trade_name.lower() in name.lower() or name.lower() in trade_name.lower():
-            old_team_note = f"(season stats reflect prior team, not current)"
+    # --- Check 1: Trade detection via BDL logs ---
+    # Use BDL to detect if player was recently traded and has limited games for new team
+    trade_info = detect_trade_and_get_stats(name)
+    if trade_info.get("traded"):
+        if trade_info.get("no_data"):
             return {
                 "status": "skip",
-                "reason": f"{name} recently traded — {old_team_note}",
+                "reason": f"{name} recently traded — no games data for new team yet",
                 "scale": 0.0,
             }
+        games_for_new_team = trade_info.get("games_played", 0)
+        if games_for_new_team < 5:
+            return {
+                "status": "skip",
+                "reason": f"{name} recently traded — only {games_for_new_team} games for {trade_info.get('recent_team', 'new team')}",
+                "scale": 0.0,
+            }
+        # Player has enough games for new team - use post-trade stats
+        # (continue to vacuum calculation but note the trade)
 
     # --- Check 2: Minimum games played ---
     if gp < MIN_GAMES_FOR_VACUUM:

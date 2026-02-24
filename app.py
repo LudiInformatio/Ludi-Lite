@@ -273,6 +273,11 @@ st.markdown("""
 
 # Initialize database at module level
 init_db()
+try:
+    from canonical import sync_canonical
+    sync_canonical()  # no-op if synced within last 24h
+except Exception:
+    pass  # canonical sync failure must never crash the app
 
 
 def _get_vacuum_context(team_abbr: str, game_total=None) -> str:

@@ -11,7 +11,11 @@ Test whether structured betting methodology improves AI analysis over raw Claude
 - **Player Spotlight**: Deep dives on specific player props
 - **All Stats Supported**: PTS, AST, REB, 3PM, STL, BLK, plus combos (PRA, PA, PR, RA, Stocks)
 - **Time-Aware**: Analysis confidence adjusts based on time until tipoff
-- **2025-26 Season Context**: Current rosters, trades, defense schemes baked in
+- **Live Injury + Suspension Intel**: ESPN-sourced suspensions (type_id=17), cached in SQLite
+- **WOWY Trade Detection**: Detects mid-season trades via BDL game logs — shows new-team stats only
+- **RSS News**: Rotowire + RealGM headlines injected before analysis. Perplexity only if RSS is empty
+- **Canonical Player Table**: BDL ↔ Tank01 ↔ SportsDataIO ID crosswalk, synced on startup
+- **2025-26 Season Context**: Current rosters, trades, defense/offense schemes baked in
 
 ## Quick Start (Local)
 
@@ -27,9 +31,9 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up secrets (copy example and add your API key)
+# Set up secrets (copy example and add your API keys)
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-# Edit secrets.toml with your ANTHROPIC_API_KEY
+# Edit secrets.toml with your keys (see section below)
 
 # Run the app
 streamlit run app.py
@@ -39,35 +43,32 @@ streamlit run app.py
 
 1. **Push to GitHub**
    ```bash
-   git init
    git add .
-   git commit -m "Initial commit - Ludi Lite"
-   git remote add origin https://github.com/LudiInformatio/ludi-lite.git
-   git push -u origin main
+   git commit -m "feat: deploy"
+   git push
    ```
 
 2. **Connect to Streamlit Cloud**
    - Go to [share.streamlit.io](https://share.streamlit.io)
-   - Click "New app"
-   - Select your `ludi-lite` repository
+   - Click "New app" → select your `ludi-lite` repo
    - Set main file path: `app.py`
    - Click "Deploy"
 
 3. **Add Secrets**
-   - In Streamlit Cloud, go to your app's Settings
-   - Click "Secrets"
-   - Add your API keys:
-     ```toml
-     # Required
-     ANTHROPIC_API_KEY = "sk-ant-api03-..."
+   In Streamlit Cloud → App Settings → Secrets:
+   ```toml
+   # Required
+   ANTHROPIC_API_KEY = "sk-ant-api03-..."
 
-     # Recommended (live data)
-     TANK01_KEY = "your-rapidapi-key"      # Rosters, injuries, depth charts
-     ODDS_API_KEY = "your-odds-api-key"    # Game lines, player props
+   # Recommended (live data)
+   TANK01_KEY = "your-rapidapi-key"        # Rosters, depth charts, box scores
+   BALLDONTLIE_KEY = "your-bdl-key"        # Stats, game logs, odds fallback
+   ODDS_API_KEY = "your-odds-api-key"      # Game lines, player props (primary)
 
-     # Optional (enhanced Freestyle)
-     PERPLEXITY_API_KEY = "pplx-..."       # Real-time web search
-     ```
+   # Optional (enhanced Freestyle)
+   PERPLEXITY_API_KEY = "pplx-..."         # Real-time web search (RSS used first)
+   SPORTSDATA_API_KEY = "your-key"         # Canonical player ID crosswalk
+   ```
 
 4. **Done!** Your app will be live at `https://your-app.streamlit.app`
 
@@ -116,18 +117,37 @@ Analysis confidence varies by time:
 ## Data Sources & APIs
 
 ### AI
-- **Claude API (Anthropic)** - claude-sonnet-4 for analysis
-- **Perplexity API** (Optional) - Real-time web search for Freestyle mode
+- **Claude API (Anthropic)** - claude-sonnet-4-6 for analysis
+- **Perplexity API** (Optional) - Real-time web search for Freestyle mode (RSS feeds checked first)
+
+### Data Priority Chain
+| Priority | Source | Used For |
+|----------|--------|---------|
+| 1st | SQLite cache (`ludi_lite.db`) | Recent data with freshness check |
+| 2nd | Tank01 | Live rosters, games, depth charts |
+| 3rd | BDL / BallDontLie | Stats, game logs, season averages, odds fallback |
+| 4th | ESPN (free, no key) | Injuries + suspensions (type_id=17) |
+| 5th | Perplexity | Real-time news (last resort — RSS used first) |
 
 ### Tank01 API (RapidAPI)
 | Endpoint | Purpose |
 |----------|---------|
 | `getNBATeamRoster` | Current rosters with stats |
-| `getNBAInjuryList` | Live injury/suspension status |
 | `getNBATeams` | All 30 teams with rosters |
 | `getNBAGamesForDate` | Today's games |
 | `getNBADepthCharts` | Starters vs backups |
 | `getNBABoxScore` | Historical game stats |
+
+> **Note:** `getNBAInjuryList` returns only playerID — unusable. Use ESPN for injuries/suspensions.
+
+### BDL / BallDontLie API
+| Endpoint | Purpose |
+|----------|---------|
+| `get_recent_game_logs()` | L5/L10 trends, WOWY trade detection |
+| `get_season_averages()` | Full-season stats |
+| `get_odds()` | Spreads/totals (fallback if The-Odds-API down) |
+| `get_player_props()` | Prop lines (fallback) |
+| `get_active_injuries()` | Medical injuries (not suspensions) |
 
 ### The-Odds-API
 | Market | Type |
@@ -148,43 +168,72 @@ Analysis confidence varies by time:
 | `player_double_double` | DD Yes/No |
 | `player_triple_double` | TD Yes/No |
 
+### ESPN API (free, no key)
+- Injuries and suspensions per team
+- `type_id=17` = suspension
+- Cached in SQLite with TTL based on time-to-tipoff (20min–4hr)
+- Fallback: `KNOWN_SUSPENSIONS` dict in `season_context.py`
+
 ## Tech Stack
 
 - **Frontend**: Streamlit
 - **AI**: Claude API (Anthropic) + Perplexity (optional)
-- **Live Data**: Tank01 API (rosters, injuries, depth charts, box scores)
-- **Odds**: The-Odds-API (game lines, 12+ player prop markets)
-- **Team Mapping**: Normalized across API naming conventions
+- **Live Data**: Tank01 (rosters, games) + BDL (stats, logs) + ESPN (injuries/suspensions)
+- **Odds**: The-Odds-API (primary) → BDL (fallback) → Tank01 (fallback)
+- **News**: Rotowire RSS + RealGM RSS → Perplexity (fallback)
+- **Player IDs**: Canonical SQLite crosswalk (BDL ↔ Tank01 ↔ SportsDataIO)
 - **Hosting**: Streamlit Cloud
-- **CI/CD**: GitHub Actions with Claude Code
+- **CI/CD**: GitHub Actions (injury refresh schedule)
 
 ## Project Structure
 
 ```
 ludi-lite/
-├── app.py              # Main Streamlit application
-├── prompts.py          # Freestyle + Methodology prompts
-├── season_context.py   # 2025-26 rosters, schemes, injuries
-├── tank01_client.py    # Tank01 API client (6 endpoints)
-├── perplexity_client.py # Perplexity real-time search
-├── team_mapping.py     # Cross-API team name normalization
-├── components.py       # UI card components
-├── requirements.txt    # Python dependencies
-├── setup.sh            # Automated setup script
-├── ludi_lite.db        # SQLite database (local cache)
-├── README.md           # This file
-├── docs/               # Project documentation
-│   ├── PRD.md          # Product requirements document
-│   └── LUDI_LITE_BUILD_SOP.md  # Build standard operating procedures
+├── app.py                  # Main Streamlit app + startup hooks
+├── api_clients.py          # 3-tier odds/props fetch chain
+├── prompts.py              # Dynamic prompt assembly
+├── season_context.py       # Rosters, schemes, suspensions, trends
+├── query_parser.py         # NLP parsing, nickname resolution
+├── usage_calculator.py     # S.A.V.A.G.E. stat bump + WOWY trade detection
+├── injury_verification.py  # Multi-source injury/suspension checker
+├── canonical.py            # Player ID crosswalk (BDL↔Tank01↔SportsDataIO)
+├── tank01_client.py        # Tank01 API client
+├── bdl_client.py           # BallDontLie API client
+├── espn_client.py          # ESPN injury/suspension client (free, no key)
+├── perplexity_client.py    # Perplexity search + RSS feeds
+├── database.py             # SQLite init (analyses, injuries, canonical tables)
+├── time_utils.py           # Time context + prompt injection (4 modes)
+├── team_mapping.py         # Cross-API team name normalization
+├── ui_components.py        # render_* functions
+├── components.py           # Advanced UI cards (Private Study palette)
+├── requirements.txt        # Python dependencies
+├── ludi_lite.db            # SQLite cache (not in git)
+├── best-practices/         # Dev standards + debugging playbook
+│   ├── README.md
+│   ├── api/
+│   │   ├── API_QUICK_REFERENCE.md
+│   │   └── LLM_INTEGRATION.md
+│   ├── coding/
+│   │   └── CODING_STANDARDS.md
+│   ├── data/
+│   │   └── DATA_MODELING.md
+│   ├── prompts/
+│   │   └── PROMPT_PATTERNS.md
+│   └── debugging/
+│       └── DEBUGGING_PLAYBOOK.md
+├── docs/
+│   ├── PRD.md
+│   └── LUDI_LITE_BUILD_SOP.md
 └── .streamlit/
-    ├── config.toml     # Theme configuration
-    └── secrets.toml    # API keys (not in git)
+    ├── config.toml         # Theme configuration
+    └── secrets.toml        # API keys (not in git)
 ```
 
 ## Documentation
 
 - **[Product Requirements (PRD)](docs/PRD.md)** - Full feature specs, user personas, success metrics
 - **[Build SOP](docs/LUDI_LITE_BUILD_SOP.md)** - Multi-agent build protocol for development & maintenance
+- **[Best Practices](best-practices/README.md)** - API reference, coding standards, debugging playbook
 
 ## The Experiment
 
@@ -202,4 +251,3 @@ MIT - Use freely, no warranties.
 ---
 
 *Built for the 2025-26 NBA season by Ludi Informatio*
-

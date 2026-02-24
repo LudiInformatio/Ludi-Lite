@@ -137,7 +137,18 @@ def compare_injury_sources(teams: List[str]) -> Dict:
     print(f"INJURY DATA VERIFICATION - {timestamp}")
     print(f"{'='*80}\n")
 
-    # Source 1: Tank01 Rosters (FIXED - using working endpoint)
+    # Source 1: ESPN (fastest, most current)
+    print("📊 Fetching ESPN injury data...")
+    espn_injuries = []
+    espn_suspensions = []
+    try:
+        from espn_client import get_injuries, get_suspensions
+        espn_injuries = get_injuries()
+        espn_suspensions = get_suspensions()
+    except Exception as e:
+        print(f"   ESPN fetch error: {e}")
+
+    # Source 2: Tank01 Rosters (FIXED - using working endpoint)
     print("📊 Fetching Tank01 roster data...")
     roster_injuries = get_injuries_from_rosters(teams)
 
@@ -162,15 +173,20 @@ def compare_injury_sources(teams: List[str]) -> Dict:
     for team in teams:
         team_injuries = [inj for inj in roster_injuries if inj['team'] == team]
         team_suspensions = [s for s in suspensions if s['team'] == team]
+        espn_team_injuries = [inj for inj in espn_injuries if inj.get('team') == team]
+        espn_team_suspensions = [s for s in espn_suspensions if s.get('team') == team]
         injuries_by_team[team] = {
             'roster': team_injuries,
+            'espn': espn_team_injuries + espn_team_suspensions,
             'suspensions': team_suspensions,
-            'total': len(team_injuries) + len(team_suspensions)
+            'total': len(team_injuries) + len(team_suspensions) + len(espn_team_injuries) + len(espn_team_suspensions)
         }
 
     results = {
         'timestamp': timestamp,
         'sources': {
+            'espn_injuries_total': len(espn_injuries),
+            'espn_suspensions_total': len(espn_suspensions),
             'roster_injuries_total': len(roster_injuries),
             'known_suspensions_total': len(suspensions),
             'nba_official_total': len(nba_official),
@@ -182,16 +198,22 @@ def compare_injury_sources(teams: List[str]) -> Dict:
     for team in teams:
         data = injuries_by_team[team]
         roster_count = len(data['roster'])
+        espn_count = len(data['espn'])
         suspension_count = len(data['suspensions'])
         total_count = data['total']
 
         print(f"\n{team}:")
         print(f"  Roster injuries: {roster_count}")
+        print(f"  ESPN injuries: {espn_count}")
 
         if data['roster']:
             for inj in data['roster']:
                 desc_short = inj['description'][:50] + "..." if len(inj['description']) > 50 else inj['description']
                 print(f"    - {inj['name']}: {inj['designation']}" + (f" ({desc_short})" if desc_short else ""))
+
+        if data['espn']:
+            for inj in data['espn']:
+                print(f"    - {inj['player_name']}: {inj['status']} ({inj.get('description', '')[:40]})")
 
         if data['suspensions']:
             print(f"  Known suspensions: {suspension_count}")
@@ -205,6 +227,7 @@ def compare_injury_sources(teams: List[str]) -> Dict:
 
         results['teams'][team] = {
             'roster_injuries': data['roster'],
+            'espn_injuries': data['espn'],
             'suspensions': data['suspensions'],
             'nba_official': [],  # Populated when NBA API is working
             'total': total_count

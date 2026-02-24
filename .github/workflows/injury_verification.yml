@@ -2,12 +2,13 @@ name: Injury Data Verification
 
 on:
   schedule:
-    # Optimized for game day injury reports (aligned with official NBA 15-min rolling updates)
-    # Run at 11 AM EST (16:00 UTC), 12 PM EST (17:00 UTC), 5 PM EST (22:00 UTC), 7 PM EST (00:00 UTC next day)
-    # Morning report → Early afternoon → Pre-primetime → Final check before main slate
-    - cron: '0 16,17,22 * * *'  # 11 AM, 12 PM, 5 PM EST
-    - cron: '0 0 * * *'          # 7 PM EST (00:00 UTC next day)
-  workflow_dispatch:  # Allow manual triggering
+    # Every 2h: 11 AM, 1 PM, 3 PM, 5 PM EST (16,18,20,22 UTC)
+    - cron: '0 16,18,20,22 * * *'
+    # Every 20 min: 6:25 PM, 6:45 PM EST (23:25, 23:45 UTC)
+    - cron: '25,45 23 * * *'
+    # Every 20 min: 7:05 PM – 10:45 PM EST (00:05–03:45 UTC next day)
+    - cron: '5,25,45 0,1,2,3 * * *'
+  workflow_dispatch:
 
 jobs:
   verify-injuries:
@@ -30,6 +31,7 @@ jobs:
         env:
           TANK01_KEY: ${{ secrets.TANK01_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          BALLDONTLIE_KEY: ${{ secrets.BALLDONTLIE_KEY }}
         run: |
           python injury_verification.py > injury_report_$(date +%Y%m%d_%H%M).txt 2>&1
           cat injury_report_*.txt
