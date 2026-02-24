@@ -63,4 +63,5 @@ Ludi-Lite/
 *.patch
 *.md
 !README.md
+!CLAUDE.md
 
